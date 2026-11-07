@@ -3,7 +3,7 @@
 // @name            Desktop Glass Clock
 // @description     Frosted-glass desktop clock that adapts to any wallpaper, any resolution and any display scale.
 // @version         1.1.0
-// @author          Levelup iD
+// @author          Andino Ferdiansah 
 // @include         explorer.exe
 // @compilerOptions -lgdiplus -ldwmapi -lgdi32 -luser32 -lole32 -lshell32 -lshlwapi -lsecur32 -lnetapi32
 // @architecture    x86-64
@@ -96,7 +96,6 @@ jadi panelnya selalu menyatu dengan wallpaper apa pun.
 #include <gdiplus.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -107,9 +106,7 @@ using namespace Gdiplus;
 
 extern "C" IMAGE_DOS_HEADER __ImageBase;
 
-// ---------------------------------------------------------------------------
 // Globals
-// ---------------------------------------------------------------------------
 
 static HINSTANCE g_hInstance = nullptr;
 static HWND g_clockWindow = nullptr;
@@ -118,8 +115,8 @@ static HANDLE g_thread = nullptr;
 static DWORD g_threadId = 0;
 
 static constexpr UINT WM_APP_REFRESH = WM_APP + 42;
-static constexpr UINT_PTR kTimerId = 1;
-static constexpr UINT_PTR kReloadTimerId = 2;
+static constexpr UINT_PTR kFrameTimerId = 1;
+static constexpr UINT_PTR kWallpaperReloadTimerId = 2;
 static constexpr float kPi = 3.14159265358979f;
 
 enum class AccentMode { Wallpaper, Windows, Custom };
@@ -151,32 +148,32 @@ struct Rgb {
 };
 
 // Wallpaper rendered (downscaled) for the target monitor.
-struct WallCanvas {
+struct WallpaperCanvas {
     bool valid = false;
-    std::vector<uint32_t> px;  // ARGB, not premultiplied, opaque
-    int w = 0, h = 0;
-    float k = 1.0f;  // canvas px per screen px
+    std::vector<uint32_t> pixels;  // ARGB, not premultiplied, opaque
+    int width = 0, height = 0;
+    float scale = 1.0f;  // canvas px per screen px
     RECT monitor{};
 };
 
 // Colors derived from the wallpaper area behind the clock.
 struct Palette {
     Rgb accent{0.49f, 1.0f, 0.70f};
-    Rgb accent2{0.24f, 1.0f, 0.77f};
+    Rgb accentEnd{0.24f, 1.0f, 0.77f};  // gradient end, hue-shifted from accent
     Rgb tint{0.02f, 0.18f, 0.22f};
-    Rgb average{0.1f, 0.3f, 0.3f};
-    float avgLum = 0.3f;
+    Rgb averageColor{0.1f, 0.3f, 0.3f};
+    float averageLuminance = 0.3f;
 };
 
 struct Layout {
-    float s = 1.0f;
+    float scale = 1.0f;
     int winW = 0, winH = 0;
     POINT pos{};
     RECT monitor{};
     RectF panel;
     float radius = 30.0f;
 
-    float greetY = 0, greetH = 0;
+    float greetingY = 0, greetingH = 0;
     float digitsY = 0, digitsH = 0;
     float barY = 0;
     float dateY = 0, dateH = 0;
@@ -185,53 +182,56 @@ struct Layout {
     std::unique_ptr<GraphicsPath> digitPath[10];
     RectF digitBounds[10];
     float glyphTop = 0, glyphBottom = 0;  // union of digit bounds (path coords)
-    float cellW = 0, innerGap = 0, colonGap = 0;
-    float cellX[4]{};
+    float digitCellW = 0, digitGap = 0, colonGap = 0;
+    float digitCellX[4]{};
     float colonX = 0;
 
-    std::unique_ptr<FontFamily> textFamily;
-    int textStyle = FontStyleRegular;
-    std::unique_ptr<Font> greetFont;
-    std::unique_ptr<Font> dateFont;
-    std::unique_ptr<Font> smallFont;
+    std::unique_ptr<FontFamily> labelFamily;
+    int labelStyle = FontStyleRegular;
+    std::unique_ptr<Font> labelFont;    // greeting, date, AM/PM
+    std::unique_ptr<Font> percentFont;  // day-progress percentage
 };
 
 static Layout g_layout;
-static WallCanvas g_canvas;
+static WallpaperCanvas g_wallpaper;
 static Palette g_palette;
-static std::wstring g_wallKey;
+static std::wstring g_wallpaperKey;
 
-static std::vector<uint32_t> g_static;  // premultiplied ARGB, winW*winH
-static std::unique_ptr<Bitmap> g_glass;  // blurred wallpaper sized to panel
+static std::vector<uint32_t> g_staticLayer;     // premultiplied ARGB, winW*winH
+static std::unique_ptr<Bitmap> g_glassBitmap;  // blurred wallpaper sized to panel
+
+// Static layer plus digits, AM/PM, greeting and date. Redrawn only when the second changes or a
+// digit rolls; the colon and seconds bar go on top every frame and never overlap these rows.
+static std::vector<uint32_t> g_contentLayer;
+static SYSTEMTIME g_contentTime{};  // second the content layer shows, milliseconds zeroed
+static bool g_contentDirty = true;
 
 // Frame buffer.
-static HDC g_memDc = nullptr;
-static HBITMAP g_dib = nullptr;
-static HGDIOBJ g_oldBitmap = nullptr;
+static HDC g_frameDc = nullptr;
+static HBITMAP g_frameDib = nullptr;
+static HGDIOBJ g_frameDcOldBitmap = nullptr;
 static uint32_t* g_frameBits = nullptr;
-static std::unique_ptr<Bitmap> g_frameBmp;
+static std::unique_ptr<Bitmap> g_frameBitmap;
 
 static bool g_layoutDirty = true;
 static bool g_canvasDirty = true;
 static bool g_glassDirty = true;
 static bool g_staticDirty = true;
-static bool g_forceWallCheck = true;
+static bool g_forceWallpaperCheck = true;
 static bool g_paused = false;
 
-static ULONGLONG g_lastWallCheck = 0;
-static ULONGLONG g_lastFsCheck = 0;
-static ULONGLONG g_fadeStart = 0;
+static ULONGLONG g_lastWallpaperCheck = 0;
+static ULONGLONG g_lastFullscreenCheck = 0;
+static ULONGLONG g_fadeInStart = 0;
 
-struct DigitAnim {
-    int cur = -1;
-    int prev = -1;
-    ULONGLONG start = 0;
+struct DigitRoll {
+    int current = -1;
+    int previous = -1;  // digit rolling out, -1 when idle
+    ULONGLONG startTick = 0;
 };
-static DigitAnim g_digitAnim[4];
+static DigitRoll g_digitRolls[4];
 
-// ---------------------------------------------------------------------------
 // Small helpers
-// ---------------------------------------------------------------------------
 
 static float Clamp01(float v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
@@ -252,22 +252,22 @@ static Rgb Mix(const Rgb& a, const Rgb& b, float t) {
 }
 
 static void RgbToHsl(const Rgb& c, float& h, float& s, float& l) {
-    const float mx = (std::max)({c.r, c.g, c.b});
-    const float mn = (std::min)({c.r, c.g, c.b});
-    l = (mx + mn) * 0.5f;
-    if (mx - mn < 1e-5f) {
+    const float maxC = (std::max)({c.r, c.g, c.b});
+    const float minC = (std::min)({c.r, c.g, c.b});
+    l = (maxC + minC) * 0.5f;
+    if (maxC - minC < 1e-5f) {
         h = 0;
         s = 0;
         return;
     }
-    const float d = mx - mn;
-    s = l > 0.5f ? d / (2.0f - mx - mn) : d / (mx + mn);
-    if (mx == c.r) {
-        h = (c.g - c.b) / d + (c.g < c.b ? 6.0f : 0.0f);
-    } else if (mx == c.g) {
-        h = (c.b - c.r) / d + 2.0f;
+    const float delta = maxC - minC;
+    s = l > 0.5f ? delta / (2.0f - maxC - minC) : delta / (maxC + minC);
+    if (maxC == c.r) {
+        h = (c.g - c.b) / delta + (c.g < c.b ? 6.0f : 0.0f);
+    } else if (maxC == c.g) {
+        h = (c.b - c.r) / delta + 2.0f;
     } else {
-        h = (c.r - c.g) / d + 4.0f;
+        h = (c.r - c.g) / delta + 4.0f;
     }
     h *= 60.0f;
 }
@@ -287,12 +287,22 @@ static Rgb HslToRgb(float h, float s, float l) {
     if (s <= 0) return {l, l, l};
     const float q = l < 0.5f ? l * (1 + s) : l + s - l * s;
     const float p = 2 * l - q;
-    const float hk = h / 360.0f;
-    return {HueToRgb(p, q, hk + 1.0f / 3), HueToRgb(p, q, hk), HueToRgb(p, q, hk - 1.0f / 3)};
+    const float hue01 = h / 360.0f;
+    return {HueToRgb(p, q, hue01 + 1.0f / 3), HueToRgb(p, q, hue01), HueToRgb(p, q, hue01 - 1.0f / 3)};
 }
 
 static Rgb FromColorRef(COLORREF c) {
     return {GetRValue(c) / 255.0f, GetGValue(c) / 255.0f, GetBValue(c) / 255.0f};
+}
+
+static Rgb UnpackRgb(uint32_t argb) {
+    return {((argb >> 16) & 0xFF) / 255.0f, ((argb >> 8) & 0xFF) / 255.0f, (argb & 0xFF) / 255.0f};
+}
+
+// 0x00RRGGBB.
+static DWORD PackRgb(const Rgb& c) {
+    return (static_cast<DWORD>(ToByte(c.r)) << 16) | (static_cast<DWORD>(ToByte(c.g)) << 8) |
+           static_cast<DWORD>(ToByte(c.b));
 }
 
 static bool ParseHexColor(const std::wstring& text, COLORREF& out) {
@@ -329,13 +339,13 @@ static void BoxBlurPass(const uint32_t* src, uint32_t* dst, int w, int h, int r,
     const int len = horizontal ? w : h;
     const int lines = horizontal ? h : w;
     const int step = horizontal ? 1 : w;
-    const int win = 2 * r + 1;
+    const int window = 2 * r + 1;
     for (int line = 0; line < lines; ++line) {
-        const uint32_t* s = horizontal ? src + static_cast<size_t>(line) * w : src + line;
-        uint32_t* d = horizontal ? dst + static_cast<size_t>(line) * w : dst + line;
+        const uint32_t* srcLine = horizontal ? src + static_cast<size_t>(line) * w : src + line;
+        uint32_t* dstLine = horizontal ? dst + static_cast<size_t>(line) * w : dst + line;
         auto at = [&](int i) -> uint32_t {
             i = i < 0 ? 0 : (i >= len ? len - 1 : i);
-            return s[static_cast<size_t>(i) * step];
+            return srcLine[static_cast<size_t>(i) * step];
         };
         int sum0 = 0, sum1 = 0, sum2 = 0, sum3 = 0;
         for (int i = -r; i <= r; ++i) {
@@ -346,15 +356,15 @@ static void BoxBlurPass(const uint32_t* src, uint32_t* dst, int w, int h, int r,
             sum3 += (p >> 24) & 0xFF;
         }
         for (int i = 0; i < len; ++i) {
-            d[static_cast<size_t>(i) * step] =
-                static_cast<uint32_t>(sum0 / win) | (static_cast<uint32_t>(sum1 / win) << 8) |
-                (static_cast<uint32_t>(sum2 / win) << 16) | (static_cast<uint32_t>(sum3 / win) << 24);
-            const uint32_t a = at(i + r + 1);
-            const uint32_t b = at(i - r);
-            sum0 += static_cast<int>(a & 0xFF) - static_cast<int>(b & 0xFF);
-            sum1 += static_cast<int>((a >> 8) & 0xFF) - static_cast<int>((b >> 8) & 0xFF);
-            sum2 += static_cast<int>((a >> 16) & 0xFF) - static_cast<int>((b >> 16) & 0xFF);
-            sum3 += static_cast<int>((a >> 24) & 0xFF) - static_cast<int>((b >> 24) & 0xFF);
+            dstLine[static_cast<size_t>(i) * step] =
+                static_cast<uint32_t>(sum0 / window) | (static_cast<uint32_t>(sum1 / window) << 8) |
+                (static_cast<uint32_t>(sum2 / window) << 16) | (static_cast<uint32_t>(sum3 / window) << 24);
+            const uint32_t entering = at(i + r + 1);
+            const uint32_t leaving = at(i - r);
+            sum0 += static_cast<int>(entering & 0xFF) - static_cast<int>(leaving & 0xFF);
+            sum1 += static_cast<int>((entering >> 8) & 0xFF) - static_cast<int>((leaving >> 8) & 0xFF);
+            sum2 += static_cast<int>((entering >> 16) & 0xFF) - static_cast<int>((leaving >> 16) & 0xFF);
+            sum3 += static_cast<int>((entering >> 24) & 0xFF) - static_cast<int>((leaving >> 24) & 0xFF);
         }
     }
 }
@@ -362,15 +372,13 @@ static void BoxBlurPass(const uint32_t* src, uint32_t* dst, int w, int h, int r,
 static void BoxBlur(std::vector<uint32_t>& buf, int w, int h, int r, int passes) {
     if (r <= 0 || w <= 0 || h <= 0) return;
     std::vector<uint32_t> tmp(buf.size());
-    for (int p = 0; p < passes; ++p) {
+    for (int pass = 0; pass < passes; ++pass) {
         BoxBlurPass(buf.data(), tmp.data(), w, h, r, true);
         BoxBlurPass(tmp.data(), buf.data(), w, h, r, false);
     }
 }
 
-// ---------------------------------------------------------------------------
-// Settings / user name
-// ---------------------------------------------------------------------------
+// Settings and user name
 
 static std::wstring ReadStringSetting(PCWSTR name) {
     PCWSTR v = Wh_GetStringSetting(name);
@@ -419,15 +427,15 @@ static std::wstring FirstWord(std::wstring s) {
 }
 
 static std::wstring DetectUserName() {
-    wchar_t buf[256]{};
-    ULONG n = ARRAYSIZE(buf);
-    if (GetUserNameExW(NameDisplay, buf, &n) && buf[0]) {
-        return FirstWord(buf);
+    wchar_t displayName[256]{};
+    ULONG displayNameLen = ARRAYSIZE(displayName);
+    if (GetUserNameExW(NameDisplay, displayName, &displayNameLen) && displayName[0]) {
+        return FirstWord(displayName);
     }
 
     wchar_t user[257]{};
-    DWORD un = ARRAYSIZE(user);
-    if (!GetUserNameW(user, &un)) return L"";
+    DWORD userLen = ARRAYSIZE(user);
+    if (!GetUserNameW(user, &userLen)) return L"";
 
     std::wstring full;
     USER_INFO_10* info = nullptr;
@@ -481,9 +489,7 @@ static std::wstring FormatDate(const SYSTEMTIME& st) {
     return buffer;
 }
 
-// ---------------------------------------------------------------------------
 // Monitor
-// ---------------------------------------------------------------------------
 
 static RECT PrimaryMonitorRect() {
     RECT r{0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
@@ -494,13 +500,11 @@ static RECT PrimaryMonitorRect() {
     return r;
 }
 
-// ---------------------------------------------------------------------------
-// Wallpaper discovery + canvas
-// ---------------------------------------------------------------------------
+// Wallpaper discovery and canvas
 
 enum WallPos { kPosCenter = 0, kPosTile = 1, kPosStretch = 2, kPosFit = 3, kPosFill = 4, kPosSpan = 5 };
 
-struct WallInfo {
+struct WallpaperInfo {
     std::wstring path;
     int position = kPosFill;
     COLORREF background = RGB(0, 0, 0);
@@ -527,24 +531,24 @@ static std::wstring TranscodedWallpaperPath() {
     return buf;
 }
 
-static WallInfo QueryWallpaper(const RECT& monitor) {
-    WallInfo info;
+static WallpaperInfo QueryWallpaper(const RECT& monitor) {
+    WallpaperInfo info;
     info.monitor = monitor;
     info.background = GetSysColor(COLOR_DESKTOP);
 
     bool gotPos = false;
-    IDesktopWallpaper* dw = nullptr;
+    IDesktopWallpaper* wallpaperApi = nullptr;
     if (SUCCEEDED(CoCreateInstance(kClsidDesktopWallpaper, nullptr, CLSCTX_ALL, kIidDesktopWallpaper,
-                                   reinterpret_cast<void**>(&dw))) &&
-        dw) {
+                                   reinterpret_cast<void**>(&wallpaperApi))) &&
+        wallpaperApi) {
         UINT count = 0;
         LPWSTR monitorId = nullptr;
-        if (SUCCEEDED(dw->GetMonitorDevicePathCount(&count))) {
+        if (SUCCEEDED(wallpaperApi->GetMonitorDevicePathCount(&count))) {
             for (UINT i = 0; i < count; ++i) {
                 LPWSTR id = nullptr;
-                if (FAILED(dw->GetMonitorDevicePathAt(i, &id)) || !id) continue;
-                RECT r{};
-                if (SUCCEEDED(dw->GetMonitorRECT(id, &r)) && EqualRect(&r, &monitor)) {
+                if (FAILED(wallpaperApi->GetMonitorDevicePathAt(i, &id)) || !id) continue;
+                RECT rect{};
+                if (SUCCEEDED(wallpaperApi->GetMonitorRECT(id, &rect)) && EqualRect(&rect, &monitor)) {
                     monitorId = id;
                     break;
                 }
@@ -552,20 +556,20 @@ static WallInfo QueryWallpaper(const RECT& monitor) {
             }
         }
         LPWSTR path = nullptr;
-        if (SUCCEEDED(dw->GetWallpaper(monitorId, &path)) && path) {
+        if (SUCCEEDED(wallpaperApi->GetWallpaper(monitorId, &path)) && path) {
             info.path = path;
             CoTaskMemFree(path);
         }
         if (monitorId) CoTaskMemFree(monitorId);
 
         DESKTOP_WALLPAPER_POSITION pos;
-        if (SUCCEEDED(dw->GetPosition(&pos))) {
+        if (SUCCEEDED(wallpaperApi->GetPosition(&pos))) {
             info.position = static_cast<int>(pos);
             gotPos = true;
         }
-        COLORREF bg;
-        if (SUCCEEDED(dw->GetBackgroundColor(&bg))) info.background = bg;
-        dw->Release();
+        COLORREF background;
+        if (SUCCEEDED(wallpaperApi->GetBackgroundColor(&background))) info.background = background;
+        wallpaperApi->Release();
     }
 
     if (info.path.empty()) {
@@ -581,11 +585,11 @@ static WallInfo QueryWallpaper(const RECT& monitor) {
         cb = sizeof(tile);
         RegGetValueW(HKEY_CURRENT_USER, L"Control Panel\\Desktop", L"TileWallpaper", RRF_RT_REG_SZ,
                      nullptr, tile, &cb);
-        const int st = _wtoi(style);
-        if (st == 10) info.position = kPosFill;
-        else if (st == 6) info.position = kPosFit;
-        else if (st == 2) info.position = kPosStretch;
-        else if (st == 22) info.position = kPosSpan;
+        const int styleValue = _wtoi(style);
+        if (styleValue == 10) info.position = kPosFill;
+        else if (styleValue == 6) info.position = kPosFit;
+        else if (styleValue == 2) info.position = kPosStretch;
+        else if (styleValue == 22) info.position = kPosSpan;
         else info.position = _wtoi(tile) ? kPosTile : kPosCenter;
     }
 
@@ -594,37 +598,38 @@ static WallInfo QueryWallpaper(const RECT& monitor) {
     return info;
 }
 
-static std::wstring WallKey(const WallInfo& info) {
-    ULONGLONG t = 0, size = 0;
-    WIN32_FILE_ATTRIBUTE_DATA fad{};
-    if (!info.path.empty() && GetFileAttributesExW(info.path.c_str(), GetFileExInfoStandard, &fad)) {
-        t = (static_cast<ULONGLONG>(fad.ftLastWriteTime.dwHighDateTime) << 32) |
-            fad.ftLastWriteTime.dwLowDateTime;
-        size = (static_cast<ULONGLONG>(fad.nFileSizeHigh) << 32) | fad.nFileSizeLow;
+// Changes whenever the wallpaper file, its layout or the monitor changes.
+static std::wstring WallpaperKey(const WallpaperInfo& info) {
+    ULONGLONG writeTime = 0, fileSize = 0;
+    WIN32_FILE_ATTRIBUTE_DATA attributes{};
+    if (!info.path.empty() && GetFileAttributesExW(info.path.c_str(), GetFileExInfoStandard, &attributes)) {
+        writeTime = (static_cast<ULONGLONG>(attributes.ftLastWriteTime.dwHighDateTime) << 32) |
+                    attributes.ftLastWriteTime.dwLowDateTime;
+        fileSize = (static_cast<ULONGLONG>(attributes.nFileSizeHigh) << 32) | attributes.nFileSizeLow;
     }
-    wchar_t buf[128];
-    swprintf_s(buf, L"|%d|%06X|%llu|%llu|%ld,%ld,%ld,%ld", info.position,
-               static_cast<unsigned>(info.background), t, size, info.monitor.left, info.monitor.top,
-               info.monitor.right, info.monitor.bottom);
-    return info.path + buf;
+    wchar_t suffix[128];
+    swprintf_s(suffix, L"|%d|%06X|%llu|%llu|%ld,%ld,%ld,%ld", info.position,
+               static_cast<unsigned>(info.background), writeTime, fileSize, info.monitor.left,
+               info.monitor.top, info.monitor.right, info.monitor.bottom);
+    return info.path + suffix;
 }
 
 static Bitmap* LoadImageFromFile(const std::wstring& path, IStream** streamOut) {
     *streamOut = nullptr;
-    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                           nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f == INVALID_HANDLE_VALUE) return nullptr;
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return nullptr;
     LARGE_INTEGER size{};
     std::vector<BYTE> data;
-    if (GetFileSizeEx(f, &size) && size.QuadPart > 0 && size.QuadPart < 512ll * 1024 * 1024) {
+    if (GetFileSizeEx(file, &size) && size.QuadPart > 0 && size.QuadPart < 512ll * 1024 * 1024) {
         data.resize(static_cast<size_t>(size.QuadPart));
         DWORD read = 0;
-        if (!ReadFile(f, data.data(), static_cast<DWORD>(data.size()), &read, nullptr) ||
+        if (!ReadFile(file, data.data(), static_cast<DWORD>(data.size()), &read, nullptr) ||
             read != data.size()) {
             data.clear();
         }
     }
-    CloseHandle(f);
+    CloseHandle(file);
     if (data.empty()) return nullptr;
 
     IStream* stream = SHCreateMemStream(data.data(), static_cast<UINT>(data.size()));
@@ -639,120 +644,112 @@ static Bitmap* LoadImageFromFile(const std::wstring& path, IStream** streamOut) 
     return bmp;
 }
 
-static bool BuildCanvas(const WallInfo& info) {
-    g_canvas.valid = false;
-    const int mw = info.monitor.right - info.monitor.left;
-    const int mh = info.monitor.bottom - info.monitor.top;
-    if (mw <= 0 || mh <= 0) return false;
+static bool BuildCanvas(const WallpaperInfo& info) {
+    g_wallpaper.valid = false;
+    const int monitorW = info.monitor.right - info.monitor.left;
+    const int monitorH = info.monitor.bottom - info.monitor.top;
+    if (monitorW <= 0 || monitorH <= 0) return false;
 
-    const float k = (std::min)(0.34f, 720.0f / static_cast<float>(mw));
-    const int cw = (std::max)(16, static_cast<int>(mw * k + 0.5f));
-    const int ch = (std::max)(16, static_cast<int>(mh * k + 0.5f));
+    const float canvasScale = (std::min)(0.34f, 720.0f / static_cast<float>(monitorW));
+    const int canvasW = (std::max)(16, static_cast<int>(monitorW * canvasScale + 0.5f));
+    const int canvasH = (std::max)(16, static_cast<int>(monitorH * canvasScale + 0.5f));
 
-    Bitmap canvas(cw, ch, PixelFormat32bppARGB);
+    g_wallpaper.pixels.resize(static_cast<size_t>(canvasW) * canvasH);
+    Bitmap canvas(canvasW, canvasH, canvasW * 4, PixelFormat32bppARGB,
+                  reinterpret_cast<BYTE*>(g_wallpaper.pixels.data()));
     if (canvas.GetLastStatus() != Ok) return false;
     {
-        Graphics cg(&canvas);
-        cg.Clear(Color(255, GetRValue(info.background), GetGValue(info.background),
+        Graphics canvasGraphics(&canvas);
+        canvasGraphics.Clear(Color(255, GetRValue(info.background), GetGValue(info.background),
                        GetBValue(info.background)));
-        cg.SetInterpolationMode(InterpolationModeHighQualityBilinear);
-        cg.SetPixelOffsetMode(PixelOffsetModeHalf);
+        canvasGraphics.SetInterpolationMode(InterpolationModeHighQualityBilinear);
+        canvasGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 
         IStream* stream = nullptr;
-        Bitmap* img = LoadImageFromFile(info.path, &stream);
-        if (!img) {
+        Bitmap* image = LoadImageFromFile(info.path, &stream);
+        if (!image) {
             // Format GDI+ can't decode (WebP/HEIC/...): use the JPEG copy Windows keeps.
             const std::wstring transcoded = TranscodedWallpaperPath();
-            if (transcoded != info.path) img = LoadImageFromFile(transcoded, &stream);
+            if (transcoded != info.path) image = LoadImageFromFile(transcoded, &stream);
         }
-        if (img) {
-            const float iw = static_cast<float>(img->GetWidth());
-            const float ih = static_cast<float>(img->GetHeight());
+        if (image) {
+            const float imageW = static_cast<float>(image->GetWidth());
+            const float imageH = static_cast<float>(image->GetHeight());
 
             // Area the wallpaper is laid out in, relative to this monitor.
-            float ax = 0, ay = 0, aw = static_cast<float>(mw), ah = static_cast<float>(mh);
+            float areaX = 0, areaY = 0, areaW = static_cast<float>(monitorW), areaH = static_cast<float>(monitorH);
             if (info.position == kPosSpan) {
-                ax = static_cast<float>(GetSystemMetrics(SM_XVIRTUALSCREEN) - info.monitor.left);
-                ay = static_cast<float>(GetSystemMetrics(SM_YVIRTUALSCREEN) - info.monitor.top);
-                aw = static_cast<float>(GetSystemMetrics(SM_CXVIRTUALSCREEN));
-                ah = static_cast<float>(GetSystemMetrics(SM_CYVIRTUALSCREEN));
+                areaX = static_cast<float>(GetSystemMetrics(SM_XVIRTUALSCREEN) - info.monitor.left);
+                areaY = static_cast<float>(GetSystemMetrics(SM_YVIRTUALSCREEN) - info.monitor.top);
+                areaW = static_cast<float>(GetSystemMetrics(SM_CXVIRTUALSCREEN));
+                areaH = static_cast<float>(GetSystemMetrics(SM_CYVIRTUALSCREEN));
             }
 
             ImageAttributes attr;
             attr.SetWrapMode(WrapModeTileFlipXY);
 
             auto draw = [&](float x, float y, float w, float h) {
-                RectF dst(x * k, y * k, w * k, h * k);
-                cg.DrawImage(img, dst, 0, 0, iw, ih, UnitPixel, &attr);
+                RectF dst(x * canvasScale, y * canvasScale, w * canvasScale, h * canvasScale);
+                canvasGraphics.DrawImage(image, dst, 0, 0, imageW, imageH, UnitPixel, &attr);
             };
 
             switch (info.position) {
                 case kPosStretch:
-                    draw(ax, ay, aw, ah);
+                    draw(areaX, areaY, areaW, areaH);
                     break;
                 case kPosFit: {
-                    const float sc = (std::min)(aw / iw, ah / ih);
-                    draw(ax + (aw - iw * sc) / 2, ay + (ah - ih * sc) / 2, iw * sc, ih * sc);
+                    const float fit = (std::min)(areaW / imageW, areaH / imageH);
+                    draw(areaX + (areaW - imageW * fit) / 2, areaY + (areaH - imageH * fit) / 2, imageW * fit,
+                         imageH * fit);
                     break;
                 }
                 case kPosCenter:
-                    draw(ax + (aw - iw) / 2, ay + (ah - ih) / 2, iw, ih);
+                    draw(areaX + (areaW - imageW) / 2, areaY + (areaH - imageH) / 2, imageW, imageH);
                     break;
                 case kPosTile:
-                    for (float y = 0; y < mh; y += ih) {
-                        for (float x = 0; x < mw; x += iw) draw(x, y, iw, ih);
+                    for (float y = 0; y < monitorH; y += imageH) {
+                        for (float x = 0; x < monitorW; x += imageW) draw(x, y, imageW, imageH);
                     }
                     break;
                 case kPosFill:
                 case kPosSpan:
                 default: {
-                    const float sc = (std::max)(aw / iw, ah / ih);
-                    draw(ax + (aw - iw * sc) / 2, ay + (ah - ih * sc) / 2, iw * sc, ih * sc);
+                    const float fill = (std::max)(areaW / imageW, areaH / imageH);
+                    draw(areaX + (areaW - imageW * fill) / 2, areaY + (areaH - imageH * fill) / 2, imageW * fill,
+                         imageH * fill);
                     break;
                 }
             }
-            delete img;
+            delete image;
         }
         if (stream) stream->Release();
     }
 
-    BitmapData bd{};
-    Rect rect(0, 0, cw, ch);
-    if (canvas.LockBits(&rect, ImageLockModeRead, PixelFormat32bppARGB, &bd) != Ok) return false;
-    g_canvas.px.resize(static_cast<size_t>(cw) * ch);
-    for (int y = 0; y < ch; ++y) {
-        memcpy(&g_canvas.px[static_cast<size_t>(y) * cw], static_cast<BYTE*>(bd.Scan0) + y * bd.Stride,
-               static_cast<size_t>(cw) * 4);
-    }
-    canvas.UnlockBits(&bd);
-
-    for (auto& p : g_canvas.px) p |= 0xFF000000u;
-    g_canvas.w = cw;
-    g_canvas.h = ch;
-    g_canvas.k = k;
-    g_canvas.monitor = info.monitor;
-    g_canvas.valid = true;
+    for (auto& p : g_wallpaper.pixels) p |= 0xFF000000u;
+    g_wallpaper.width = canvasW;
+    g_wallpaper.height = canvasH;
+    g_wallpaper.scale = canvasScale;
+    g_wallpaper.monitor = info.monitor;
+    g_wallpaper.valid = true;
     return true;
 }
 
 static void CheckWallpaper(bool force) {
-    const WallInfo info = QueryWallpaper(PrimaryMonitorRect());
-    const std::wstring key = WallKey(info);
-    if (!force && key == g_wallKey && g_canvas.valid) return;
-    g_wallKey = key;
+    const WallpaperInfo info = QueryWallpaper(PrimaryMonitorRect());
+    const std::wstring key = WallpaperKey(info);
+    if (!force && key == g_wallpaperKey && g_wallpaper.valid) return;
+    g_wallpaperKey = key;
     BuildCanvas(info);
     g_glassDirty = true;
 }
 
-// ---------------------------------------------------------------------------
 // Palette
-// ---------------------------------------------------------------------------
 
 static Rgb WindowsAccent(bool& ok) {
     DWORD argb = 0;
     BOOL opaque = FALSE;
     ok = SUCCEEDED(DwmGetColorizationColor(&argb, &opaque));
-    return {((argb >> 16) & 0xFF) / 255.0f, ((argb >> 8) & 0xFF) / 255.0f, (argb & 0xFF) / 255.0f};
+    return UnpackRgb(argb);
 }
 
 static void SetAccentFromBase(const Rgb& base, bool keepExact) {
@@ -760,59 +757,60 @@ static void SetAccentFromBase(const Rgb& base, bool keepExact) {
     RgbToHsl(base, h, s, l);
     if (keepExact) {
         g_palette.accent = base;
-        g_palette.accent2 = HslToRgb(h + 26.0f, s, (std::max)(0.35f, l - 0.06f));
+        g_palette.accentEnd = HslToRgb(h + 26.0f, s, (std::max)(0.35f, l - 0.06f));
         return;
     }
     s = (std::clamp)((std::max)(s, 0.75f), 0.0f, 0.95f);
     g_palette.accent = HslToRgb(h, s, 0.64f);
-    g_palette.accent2 = HslToRgb(h + 28.0f, s, 0.58f);
+    g_palette.accentEnd = HslToRgb(h + 28.0f, s, 0.58f);
 }
 
-static void AnalyzeRegion(int x0, int y0, int x1, int y1) {
-    x0 = (std::clamp)(x0, 0, g_canvas.w - 1);
-    x1 = (std::clamp)(x1, x0 + 1, g_canvas.w);
-    y0 = (std::clamp)(y0, 0, g_canvas.h - 1);
-    y1 = (std::clamp)(y1, y0 + 1, g_canvas.h);
+// Picks the accent (dominant saturated hue, weighted toward mid lightness) and the glass tint.
+static void AnalyzeWallpaperRegion(int x0, int y0, int x1, int y1) {
+    x0 = (std::clamp)(x0, 0, g_wallpaper.width - 1);
+    x1 = (std::clamp)(x1, x0 + 1, g_wallpaper.width);
+    y0 = (std::clamp)(y0, 0, g_wallpaper.height - 1);
+    y1 = (std::clamp)(y1, y0 + 1, g_wallpaper.height);
 
-    float bins[36]{}, br[36]{}, bg[36]{}, bb[36]{};
-    double lumSum = 0, rs = 0, gs = 0, bs = 0;
+    // 36 hue bins of 10 degrees: total weight and weighted color sums.
+    float bins[36]{}, binR[36]{}, binG[36]{}, binB[36]{};
+    double lumSum = 0, sumR = 0, sumG = 0, sumB = 0;
     int count = 0;
     for (int y = y0; y < y1; ++y) {
         for (int x = x0; x < x1; ++x) {
-            const uint32_t p = g_canvas.px[static_cast<size_t>(y) * g_canvas.w + x];
-            const Rgb c{((p >> 16) & 0xFF) / 255.0f, ((p >> 8) & 0xFF) / 255.0f, (p & 0xFF) / 255.0f};
+            const Rgb c = UnpackRgb(g_wallpaper.pixels[static_cast<size_t>(y) * g_wallpaper.width + x]);
             const float lum = 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
             lumSum += lum;
-            rs += c.r;
-            gs += c.g;
-            bs += c.b;
+            sumR += c.r;
+            sumG += c.g;
+            sumB += c.b;
             ++count;
             float h, s, l;
             RgbToHsl(c, h, s, l);
             if (s > 0.18f && l > 0.10f && l < 0.92f) {
-                const float w = s * s * (1.0f - std::fabs(l - 0.5f) * 1.3f);
-                if (w <= 0) continue;
+                const float weight = s * s * (1.0f - std::fabs(l - 0.5f) * 1.3f);
+                if (weight <= 0) continue;
                 const int bin = static_cast<int>(h / 10.0f) % 36;
-                bins[bin] += w;
-                br[bin] += c.r * w;
-                bg[bin] += c.g * w;
-                bb[bin] += c.b * w;
+                bins[bin] += weight;
+                binR[bin] += c.r * weight;
+                binG[bin] += c.g * weight;
+                binB[bin] += c.b * weight;
             }
         }
     }
     if (count == 0) return;
 
-    g_palette.avgLum = static_cast<float>(lumSum / count);
-    g_palette.average = {static_cast<float>(rs / count), static_cast<float>(gs / count),
-                         static_cast<float>(bs / count)};
+    g_palette.averageLuminance = static_cast<float>(lumSum / count);
+    g_palette.averageColor = {static_cast<float>(sumR / count), static_cast<float>(sumG / count),
+                              static_cast<float>(sumB / count)};
 
     int best = -1;
-    float bestW = 0, total = 0;
+    float bestWeight = 0, total = 0;
     for (int i = 0; i < 36; ++i) {
         total += bins[i];
-        const float w = bins[i] + 0.5f * (bins[(i + 35) % 36] + bins[(i + 1) % 36]);
-        if (w > bestW) {
-            bestW = w;
+        const float weight = bins[i] + 0.5f * (bins[(i + 35) % 36] + bins[(i + 1) % 36]);
+        if (weight > bestWeight) {
+            bestWeight = weight;
             best = i;
         }
     }
@@ -831,7 +829,7 @@ static void AnalyzeRegion(int x0, int y0, int x1, int y1) {
         case AccentMode::Wallpaper:
         default:
             if (colorful) {
-                SetAccentFromBase({br[best] / bins[best], bg[best] / bins[best], bb[best] / bins[best]},
+                SetAccentFromBase({binR[best] / bins[best], binG[best] / bins[best], binB[best] / bins[best]},
                                   false);
             } else {
                 // Grey / black / white wallpaper: fall back to the Windows accent.
@@ -846,23 +844,18 @@ static void AnalyzeRegion(int x0, int y0, int x1, int y1) {
 
     // Dark glass tint harmonised with the wallpaper.
     float h, s, l;
-    RgbToHsl(g_palette.average, h, s, l);
+    RgbToHsl(g_palette.averageColor, h, s, l);
     g_palette.tint = HslToRgb(h, (std::min)(s, 0.55f) * 0.9f, 0.10f);
-}
-
-static DWORD PackRgb(const Rgb& c) {
-    return (static_cast<DWORD>(ToByte(c.r)) << 16) | (static_cast<DWORD>(ToByte(c.g)) << 8) |
-           static_cast<DWORD>(ToByte(c.b));
 }
 
 // Shares the clock palette with the TAI taskbar mod (Windows-OCT accent twin).
 // The taskbar watches HKCU\Software\Windows-OCT and restyles itself on change.
 static void PublishAccent() {
-    static DWORD lastAccent = 0xFFFFFFFF, lastAccent2 = 0xFFFFFFFF, lastTint = 0xFFFFFFFF;
+    static DWORD lastAccent = 0xFFFFFFFF, lastAccentEnd = 0xFFFFFFFF, lastTint = 0xFFFFFFFF;
     const DWORD accent = PackRgb(g_palette.accent);
-    const DWORD accent2 = PackRgb(g_palette.accent2);
+    const DWORD accentEnd = PackRgb(g_palette.accentEnd);
     const DWORD tint = PackRgb(g_palette.tint);
-    if (accent == lastAccent && accent2 == lastAccent2 && tint == lastTint) return;
+    if (accent == lastAccent && accentEnd == lastAccentEnd && tint == lastTint) return;
     HKEY key = nullptr;
     if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Windows-OCT", 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key,
                         nullptr) != ERROR_SUCCESS) {
@@ -870,104 +863,99 @@ static void PublishAccent() {
     }
     // Accent is written last; the taskbar debounces, so it never keeps a half-updated palette.
     RegSetValueExW(key, L"Tint", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&tint), sizeof(tint));
-    RegSetValueExW(key, L"Accent2", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&accent2), sizeof(accent2));
+    RegSetValueExW(key, L"Accent2", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&accentEnd), sizeof(accentEnd));
     RegSetValueExW(key, L"Accent", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&accent), sizeof(accent));
     RegCloseKey(key);
     lastAccent = accent;
-    lastAccent2 = accent2;
+    lastAccentEnd = accentEnd;
     lastTint = tint;
 }
 
-// ---------------------------------------------------------------------------
 // Fonts
-// ---------------------------------------------------------------------------
 
-static std::unique_ptr<FontFamily> PickFamily(std::initializer_list<std::pair<const wchar_t*, int>> list,
+static std::unique_ptr<FontFamily> PickFamily(std::initializer_list<std::pair<const wchar_t*, int>> candidates,
                                               int& styleOut) {
-    for (const auto& c : list) {
-        auto fam = std::make_unique<FontFamily>(c.first);
-        if (fam->GetLastStatus() == Ok && fam->IsAvailable() && fam->IsStyleAvailable(c.second)) {
-            styleOut = c.second;
-            return fam;
+    for (const auto& [name, style] : candidates) {
+        auto family = std::make_unique<FontFamily>(name);
+        if (family->GetLastStatus() == Ok && family->IsAvailable() && family->IsStyleAvailable(style)) {
+            styleOut = style;
+            return family;
         }
     }
     styleOut = FontStyleBold;
     return std::make_unique<FontFamily>(L"Segoe UI");
 }
 
-// ---------------------------------------------------------------------------
 // Layout
-// ---------------------------------------------------------------------------
 
 static void FreeFrameBuffer() {
-    g_frameBmp.reset();
-    if (g_memDc) {
-        if (g_oldBitmap) SelectObject(g_memDc, g_oldBitmap);
-        DeleteDC(g_memDc);
-        g_memDc = nullptr;
+    g_frameBitmap.reset();
+    if (g_frameDc) {
+        if (g_frameDcOldBitmap) SelectObject(g_frameDc, g_frameDcOldBitmap);
+        DeleteDC(g_frameDc);
+        g_frameDc = nullptr;
     }
-    if (g_dib) {
-        DeleteObject(g_dib);
-        g_dib = nullptr;
+    if (g_frameDib) {
+        DeleteObject(g_frameDib);
+        g_frameDib = nullptr;
     }
-    g_oldBitmap = nullptr;
+    g_frameDcOldBitmap = nullptr;
     g_frameBits = nullptr;
 }
 
 static void BuildLayout() {
-    Layout& L = g_layout;
-    L.monitor = PrimaryMonitorRect();
-    const float mw = static_cast<float>(L.monitor.right - L.monitor.left);
-    const float mh = static_cast<float>(L.monitor.bottom - L.monitor.top);
+    Layout& layout = g_layout;
+    layout.monitor = PrimaryMonitorRect();
+    const int monitorW = layout.monitor.right - layout.monitor.left;
+    const int monitorH = layout.monitor.bottom - layout.monitor.top;
 
     // Same visual proportion on every resolution / DPI: 1.0 at 1920x1080.
-    const float base = (std::min)(mh / 1080.0f, mw / 1200.0f);
-    const float s = (std::clamp)(base * g_settings.scalePercent / 100.0f, 0.35f, 4.0f);
-    L.s = s;
+    const float fitScale = (std::min)(monitorH / 1080.0f, monitorW / 1200.0f);
+    const float scale = (std::clamp)(fitScale * g_settings.scalePercent / 100.0f, 0.35f, 4.0f);
+    layout.scale = scale;
 
-    const float margin = std::round(36.0f * s);
-    const float panelW = std::round(620.0f * s);
+    const float margin = std::round(36.0f * scale);
+    const float panelW = std::round(620.0f * scale);
 
+    // Rows stacked top to bottom, in 1080p units until multiplied by scale.
     float y = 26.0f;
     if (g_settings.showGreeting) {
-        L.greetY = y * s;
-        L.greetH = 28.0f * s;
+        layout.greetingY = y * scale;
+        layout.greetingH = 28.0f * scale;
         y += 28.0f + 4.0f;
     }
-    L.digitsY = y * s;
-    L.digitsH = 132.0f * s;
+    layout.digitsY = y * scale;
+    layout.digitsH = 132.0f * scale;
     y += 132.0f;
     if (g_settings.showSeconds) {
         y += 16.0f;
-        L.barY = y * s;
+        layout.barY = y * scale;
         y += 6.0f;
     }
     if (g_settings.showDate) {
         y += g_settings.showSeconds ? 16.0f : 10.0f;
-        L.dateY = y * s;
-        L.dateH = 28.0f * s;
+        layout.dateY = y * scale;
+        layout.dateH = 28.0f * scale;
         y += 28.0f;
     }
     y += 26.0f;
-    const float panelH = std::round(y * s);
+    const float panelH = std::round(y * scale);
 
-    L.winW = static_cast<int>(panelW + margin * 2);
-    L.winH = static_cast<int>(panelH + margin * 2);
-    L.panel = RectF(margin, margin, panelW, panelH);
-    L.radius = 30.0f * s;
+    layout.winW = static_cast<int>(panelW + margin * 2);
+    layout.winH = static_cast<int>(panelH + margin * 2);
+    layout.panel = RectF(margin, margin, panelW, panelH);
+    layout.radius = 30.0f * scale;
 
     // Shift rows into window coordinates.
-    L.greetY += margin;
-    L.digitsY += margin;
-    L.barY += margin;
-    L.dateY += margin;
+    layout.greetingY += margin;
+    layout.digitsY += margin;
+    layout.barY += margin;
+    layout.dateY += margin;
 
-    const int monW = L.monitor.right - L.monitor.left;
-    const int monH = L.monitor.bottom - L.monitor.top;
-    L.pos.x = L.monitor.left + (monW - L.winW) / 2;
-    L.pos.y = g_settings.centerVertically
-                  ? L.monitor.top + (monH - L.winH) / 2
-                  : L.monitor.top + static_cast<int>(g_settings.topOffset * s - margin);
+    layout.pos.x = layout.monitor.left + (monitorW - layout.winW) / 2;
+    layout.pos.y = g_settings.centerVertically
+                       ? layout.monitor.top + (monitorH - layout.winH) / 2
+                       : layout.monitor.top + static_cast<int>(g_settings.topOffset * scale - margin);
 
     // Digit glyphs.
     int digitStyle = FontStyleBold;
@@ -975,65 +963,66 @@ static void BuildLayout() {
                                    {L"Segoe UI", FontStyleBold},
                                    {L"Segoe UI Semibold", FontStyleRegular}},
                                   digitStyle);
-    const float em = 150.0f * s;
-    StringFormat typo(StringFormat::GenericTypographic());
-    float maxW = 0;
-    L.glyphTop = 1e9f;
-    L.glyphBottom = -1e9f;
+    const float emSize = 150.0f * scale;
+    StringFormat typographic(StringFormat::GenericTypographic());
+    float maxGlyphW = 0;
+    layout.glyphTop = 1e9f;
+    layout.glyphBottom = -1e9f;
     for (int d = 0; d < 10; ++d) {
-        wchar_t ch[2] = {static_cast<wchar_t>(L'0' + d), 0};
-        L.digitPath[d] = std::make_unique<GraphicsPath>();
-        L.digitPath[d]->AddString(ch, 1, digitFamily.get(), digitStyle, em, PointF(0, 0), &typo);
-        L.digitPath[d]->GetBounds(&L.digitBounds[d]);
-        maxW = (std::max)(maxW, L.digitBounds[d].Width);
-        L.glyphTop = (std::min)(L.glyphTop, L.digitBounds[d].Y);
-        L.glyphBottom = (std::max)(L.glyphBottom, L.digitBounds[d].GetBottom());
+        const wchar_t digitText[2] = {static_cast<wchar_t>(L'0' + d), 0};
+        layout.digitPath[d] = std::make_unique<GraphicsPath>();
+        layout.digitPath[d]->AddString(digitText, 1, digitFamily.get(), digitStyle, emSize, PointF(0, 0),
+                                       &typographic);
+        layout.digitPath[d]->GetBounds(&layout.digitBounds[d]);
+        maxGlyphW = (std::max)(maxGlyphW, layout.digitBounds[d].Width);
+        layout.glyphTop = (std::min)(layout.glyphTop, layout.digitBounds[d].Y);
+        layout.glyphBottom = (std::max)(layout.glyphBottom, layout.digitBounds[d].GetBottom());
     }
-    L.cellW = maxW + 4.0f * s;
-    L.innerGap = 8.0f * s;
-    L.colonGap = 54.0f * s;
-    const float total = L.cellW * 4 + L.innerGap * 2 + L.colonGap;
-    const float cx = L.panel.X + L.panel.Width / 2.0f;
-    const float x0 = cx - total / 2.0f;
-    L.cellX[0] = x0;
-    L.cellX[1] = x0 + L.cellW + L.innerGap;
-    L.colonX = cx;
-    L.cellX[2] = x0 + L.cellW * 2 + L.innerGap + L.colonGap;
-    L.cellX[3] = L.cellX[2] + L.cellW + L.innerGap;
+    layout.digitCellW = maxGlyphW + 4.0f * scale;
+    layout.digitGap = 8.0f * scale;
+    layout.colonGap = 54.0f * scale;
+    const float rowW = layout.digitCellW * 4 + layout.digitGap * 2 + layout.colonGap;
+    const float centerX = layout.panel.X + layout.panel.Width / 2.0f;
+    const float rowX = centerX - rowW / 2.0f;
+    layout.digitCellX[0] = rowX;
+    layout.digitCellX[1] = rowX + layout.digitCellW + layout.digitGap;
+    layout.colonX = centerX;
+    layout.digitCellX[2] = rowX + layout.digitCellW * 2 + layout.digitGap + layout.colonGap;
+    layout.digitCellX[3] = layout.digitCellX[2] + layout.digitCellW + layout.digitGap;
 
     // Text fonts.
-    L.smallFont.reset();
-    L.dateFont.reset();
-    L.greetFont.reset();
-    L.textFamily = PickFamily({{L"Segoe UI Variable Text Semibold", FontStyleRegular},
-                               {L"Segoe UI Variable Text Semib", FontStyleRegular},
-                               {L"Segoe UI Semibold", FontStyleRegular},
-                               {L"Segoe UI", FontStyleBold}},
-                              L.textStyle);
-    L.greetFont = std::make_unique<Font>(L.textFamily.get(), 19.0f * s, L.textStyle, UnitPixel);
-    L.dateFont = std::make_unique<Font>(L.textFamily.get(), 19.0f * s, L.textStyle, UnitPixel);
-    L.smallFont = std::make_unique<Font>(L.textFamily.get(), 15.0f * s, L.textStyle, UnitPixel);
+    layout.percentFont.reset();
+    layout.labelFont.reset();
+    layout.labelFamily = PickFamily({{L"Segoe UI Variable Text Semibold", FontStyleRegular},
+                                     {L"Segoe UI Variable Text Semib", FontStyleRegular},
+                                     {L"Segoe UI Semibold", FontStyleRegular},
+                                     {L"Segoe UI", FontStyleBold}},
+                                    layout.labelStyle);
+    layout.labelFont =
+        std::make_unique<Font>(layout.labelFamily.get(), 19.0f * scale, layout.labelStyle, UnitPixel);
+    layout.percentFont =
+        std::make_unique<Font>(layout.labelFamily.get(), 15.0f * scale, layout.labelStyle, UnitPixel);
 
     // Frame buffer.
     FreeFrameBuffer();
     HDC screenDc = GetDC(nullptr);
-    g_memDc = CreateCompatibleDC(screenDc);
+    g_frameDc = CreateCompatibleDC(screenDc);
     ReleaseDC(nullptr, screenDc);
 
-    BITMAPINFO bi{};
-    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bi.bmiHeader.biWidth = L.winW;
-    bi.bmiHeader.biHeight = -L.winH;
-    bi.bmiHeader.biPlanes = 1;
-    bi.bmiHeader.biBitCount = 32;
-    bi.bmiHeader.biCompression = BI_RGB;
+    BITMAPINFO bitmapInfo{};
+    bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bitmapInfo.bmiHeader.biWidth = layout.winW;
+    bitmapInfo.bmiHeader.biHeight = -layout.winH;
+    bitmapInfo.bmiHeader.biPlanes = 1;
+    bitmapInfo.bmiHeader.biBitCount = 32;
+    bitmapInfo.bmiHeader.biCompression = BI_RGB;
     void* bits = nullptr;
-    g_dib = CreateDIBSection(g_memDc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
-    if (g_dib && bits) {
-        g_oldBitmap = SelectObject(g_memDc, g_dib);
+    g_frameDib = CreateDIBSection(g_frameDc, &bitmapInfo, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (g_frameDib && bits) {
+        g_frameDcOldBitmap = SelectObject(g_frameDc, g_frameDib);
         g_frameBits = static_cast<uint32_t*>(bits);
-        g_frameBmp = std::make_unique<Bitmap>(L.winW, L.winH, L.winW * 4, PixelFormat32bppPARGB,
-                                              static_cast<BYTE*>(bits));
+        g_frameBitmap = std::make_unique<Bitmap>(layout.winW, layout.winH, layout.winW * 4,
+                                                 PixelFormat32bppPARGB, static_cast<BYTE*>(bits));
     }
 
     g_layoutDirty = false;
@@ -1041,17 +1030,15 @@ static void BuildLayout() {
     g_staticDirty = true;
 }
 
-// ---------------------------------------------------------------------------
-// Glass (blurred wallpaper behind the panel) + palette
-// ---------------------------------------------------------------------------
+// Glass (blurred wallpaper behind the panel) and palette
 
 static void BuildGlass() {
-    g_glass.reset();
+    g_glassBitmap.reset();
     g_glassDirty = false;
     g_staticDirty = true;
 
-    const Layout& L = g_layout;
-    if (!g_canvas.valid) {
+    const Layout& layout = g_layout;
+    if (!g_wallpaper.valid) {
         // Keep defaults but still honour accent settings.
         g_palette = Palette{};
         if (g_settings.accentMode == AccentMode::Custom) {
@@ -1065,341 +1052,336 @@ static void BuildGlass() {
         return;
     }
 
-    const float k = g_canvas.k;
-    const float px = (L.pos.x - g_canvas.monitor.left + L.panel.X) * k;
-    const float py = (L.pos.y - g_canvas.monitor.top + L.panel.Y) * k;
-    const float pw = L.panel.Width * k;
-    const float ph = L.panel.Height * k;
+    // Panel rectangle in wallpaper-canvas pixels.
+    const float canvasScale = g_wallpaper.scale;
+    const float panelX = (layout.pos.x - g_wallpaper.monitor.left + layout.panel.X) * canvasScale;
+    const float panelY = (layout.pos.y - g_wallpaper.monitor.top + layout.panel.Y) * canvasScale;
+    const float panelW = layout.panel.Width * canvasScale;
+    const float panelH = layout.panel.Height * canvasScale;
 
     // Palette from a slightly larger area so the accent represents the surroundings.
-    AnalyzeRegion(static_cast<int>(px - pw * 0.25f), static_cast<int>(py - ph * 0.25f),
-                  static_cast<int>(px + pw * 1.25f), static_cast<int>(py + ph * 1.25f));
+    AnalyzeWallpaperRegion(static_cast<int>(panelX - panelW * 0.25f), static_cast<int>(panelY - panelH * 0.25f),
+                           static_cast<int>(panelX + panelW * 1.25f), static_cast<int>(panelY + panelH * 1.25f));
     PublishAccent();
 
-    const float realRadius = (6.0f + g_settings.blurStrength * 0.55f) * L.s;
-    const int r = (std::max)(1, static_cast<int>(realRadius * k / 1.7f + 0.5f));
-    const int pad = r * 3;
-    const int x0 = static_cast<int>(std::floor(px)) - pad;
-    const int y0 = static_cast<int>(std::floor(py)) - pad;
-    const int cw = static_cast<int>(std::ceil(pw)) + pad * 2 + 1;
-    const int ch = static_cast<int>(std::ceil(ph)) + pad * 2 + 1;
-    if (cw <= 0 || ch <= 0) return;
+    const float blurRadius = (6.0f + g_settings.blurStrength * 0.55f) * layout.scale;
+    // Three box passes approximate a gaussian, hence the 1.7 divisor.
+    const int boxRadius = (std::max)(1, static_cast<int>(blurRadius * canvasScale / 1.7f + 0.5f));
+    const int pad = boxRadius * 3;
+    const int cropX = static_cast<int>(std::floor(panelX)) - pad;
+    const int cropY = static_cast<int>(std::floor(panelY)) - pad;
+    const int cropW = static_cast<int>(std::ceil(panelW)) + pad * 2 + 1;
+    const int cropH = static_cast<int>(std::ceil(panelH)) + pad * 2 + 1;
+    if (cropW <= 0 || cropH <= 0) return;
 
-    std::vector<uint32_t> crop(static_cast<size_t>(cw) * ch);
-    for (int y = 0; y < ch; ++y) {
-        const int sy = (std::clamp)(y0 + y, 0, g_canvas.h - 1);
-        for (int x = 0; x < cw; ++x) {
-            const int sx = (std::clamp)(x0 + x, 0, g_canvas.w - 1);
-            crop[static_cast<size_t>(y) * cw + x] = g_canvas.px[static_cast<size_t>(sy) * g_canvas.w + sx];
+    std::vector<uint32_t> crop(static_cast<size_t>(cropW) * cropH);
+    for (int y = 0; y < cropH; ++y) {
+        const int srcY = (std::clamp)(cropY + y, 0, g_wallpaper.height - 1);
+        for (int x = 0; x < cropW; ++x) {
+            const int srcX = (std::clamp)(cropX + x, 0, g_wallpaper.width - 1);
+            crop[static_cast<size_t>(y) * cropW + x] =
+                g_wallpaper.pixels[static_cast<size_t>(srcY) * g_wallpaper.width + srcX];
         }
     }
-    if (g_settings.blurStrength > 0) BoxBlur(crop, cw, ch, r, 3);
+    if (g_settings.blurStrength > 0) BoxBlur(crop, cropW, cropH, boxRadius, 3);
 
     // Acrylic-like saturation boost.
     for (auto& p : crop) {
-        float rr = ((p >> 16) & 0xFF) / 255.0f, gg = ((p >> 8) & 0xFF) / 255.0f, bb = (p & 0xFF) / 255.0f;
-        const float lum = 0.2126f * rr + 0.7152f * gg + 0.0722f * bb;
-        rr = Clamp01(lum + (rr - lum) * 1.25f);
-        gg = Clamp01(lum + (gg - lum) * 1.25f);
-        bb = Clamp01(lum + (bb - lum) * 1.25f);
-        p = 0xFF000000u | (static_cast<uint32_t>(ToByte(rr)) << 16) |
-            (static_cast<uint32_t>(ToByte(gg)) << 8) | ToByte(bb);
+        Rgb c = UnpackRgb(p);
+        const float lum = 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
+        c = {Clamp01(lum + (c.r - lum) * 1.25f), Clamp01(lum + (c.g - lum) * 1.25f),
+             Clamp01(lum + (c.b - lum) * 1.25f)};
+        p = 0xFF000000u | PackRgb(c);
     }
 
-    Bitmap small(cw, ch, PixelFormat32bppARGB);
-    if (small.GetLastStatus() != Ok) return;
-    BitmapData bd{};
-    Rect rect(0, 0, cw, ch);
-    if (small.LockBits(&rect, ImageLockModeWrite, PixelFormat32bppARGB, &bd) != Ok) return;
-    for (int y = 0; y < ch; ++y) {
-        memcpy(static_cast<BYTE*>(bd.Scan0) + y * bd.Stride, &crop[static_cast<size_t>(y) * cw],
-               static_cast<size_t>(cw) * 4);
-    }
-    small.UnlockBits(&bd);
+    Bitmap cropBitmap(cropW, cropH, cropW * 4, PixelFormat32bppARGB, reinterpret_cast<BYTE*>(crop.data()));
+    if (cropBitmap.GetLastStatus() != Ok) return;
 
-    const int gw = static_cast<int>(std::ceil(L.panel.Width));
-    const int gh = static_cast<int>(std::ceil(L.panel.Height));
-    g_glass = std::make_unique<Bitmap>(gw, gh, PixelFormat32bppPARGB);
-    if (g_glass->GetLastStatus() != Ok) {
-        g_glass.reset();
+    const int glassW = static_cast<int>(std::ceil(layout.panel.Width));
+    const int glassH = static_cast<int>(std::ceil(layout.panel.Height));
+    g_glassBitmap = std::make_unique<Bitmap>(glassW, glassH, PixelFormat32bppPARGB);
+    if (g_glassBitmap->GetLastStatus() != Ok) {
+        g_glassBitmap.reset();
         return;
     }
-    Graphics g(g_glass.get());
+    Graphics g(g_glassBitmap.get());
     g.SetInterpolationMode(InterpolationModeHighQualityBicubic);
     g.SetPixelOffsetMode(PixelOffsetModeHalf);
     ImageAttributes attr;
     attr.SetWrapMode(WrapModeTileFlipXY);
-    const float sx = px - static_cast<float>(x0);
-    const float sy = py - static_cast<float>(y0);
-    g.DrawImage(&small, RectF(0, 0, static_cast<REAL>(gw), static_cast<REAL>(gh)), sx, sy, pw, ph,
+    g.DrawImage(&cropBitmap, RectF(0, 0, static_cast<REAL>(glassW), static_cast<REAL>(glassH)),
+                panelX - static_cast<float>(cropX), panelY - static_cast<float>(cropY), panelW, panelH,
                 UnitPixel, &attr);
 }
 
-// ---------------------------------------------------------------------------
 // Static layer (shadow, glass, tint, sheen, border)
-// ---------------------------------------------------------------------------
 
-static void BuildStatic() {
-    const Layout& L = g_layout;
-    const size_t n = static_cast<size_t>(L.winW) * L.winH;
-    g_static.assign(n, 0);
+static void BuildStaticLayer() {
+    const Layout& layout = g_layout;
+    const RectF& panel = layout.panel;
+    const size_t pixelCount = static_cast<size_t>(layout.winW) * layout.winH;
+    g_staticLayer.assign(pixelCount, 0);
     g_staticDirty = false;
-    if (!g_settings.showPanel || n == 0) return;
+    g_contentDirty = true;
+    if (!g_settings.showPanel || pixelCount == 0) return;
 
-    const float s = L.s;
+    const float scale = layout.scale;
+    BYTE* layerBytes = reinterpret_cast<BYTE*>(g_staticLayer.data());
 
     // Soft drop shadow.
     {
-        Bitmap b(L.winW, L.winH, L.winW * 4, PixelFormat32bppPARGB, reinterpret_cast<BYTE*>(g_static.data()));
-        Graphics g(&b);
+        Bitmap shadowBitmap(layout.winW, layout.winH, layout.winW * 4, PixelFormat32bppPARGB, layerBytes);
+        Graphics g(&shadowBitmap);
         g.SetSmoothingMode(SmoothingModeAntiAlias);
-        GraphicsPath sp;
-        AddRoundRect(sp, RectF(L.panel.X + 6 * s, L.panel.Y + 14 * s, L.panel.Width - 12 * s, L.panel.Height - 10 * s),
-                     L.radius);
-        SolidBrush br(Color(static_cast<BYTE>(110 + 50 * g_palette.avgLum), 0, 0, 0));
-        g.FillPath(&br, &sp);
+        GraphicsPath shadowPath;
+        AddRoundRect(shadowPath,
+                     RectF(panel.X + 6 * scale, panel.Y + 14 * scale, panel.Width - 12 * scale,
+                           panel.Height - 10 * scale),
+                     layout.radius);
+        SolidBrush shadowBrush(Color(static_cast<BYTE>(110 + 50 * g_palette.averageLuminance), 0, 0, 0));
+        g.FillPath(&shadowBrush, &shadowPath);
     }
-    BoxBlur(g_static, L.winW, L.winH, (std::max)(1, static_cast<int>(10 * s)), 3);
+    BoxBlur(g_staticLayer, layout.winW, layout.winH, (std::max)(1, static_cast<int>(10 * scale)), 3);
 
-    Bitmap b(L.winW, L.winH, L.winW * 4, PixelFormat32bppPARGB, reinterpret_cast<BYTE*>(g_static.data()));
-    Graphics g(&b);
+    Bitmap layerBitmap(layout.winW, layout.winH, layout.winW * 4, PixelFormat32bppPARGB, layerBytes);
+    Graphics g(&layerBitmap);
     g.SetSmoothingMode(SmoothingModeAntiAlias);
     g.SetPixelOffsetMode(PixelOffsetModeHalf);
     g.SetInterpolationMode(InterpolationModeHighQualityBilinear);
 
-    GraphicsPath pp;
-    AddRoundRect(pp, L.panel, L.radius);
+    GraphicsPath panelPath;
+    AddRoundRect(panelPath, panel, layout.radius);
 
-    // 1. Frosted wallpaper.
-    if (g_glass) {
-        TextureBrush tb(g_glass.get(), WrapModeTileFlipXY);
-        tb.TranslateTransform(L.panel.X, L.panel.Y);
-        g.FillPath(&tb, &pp);
+    // Frosted wallpaper.
+    if (g_glassBitmap) {
+        TextureBrush glassBrush(g_glassBitmap.get(), WrapModeTileFlipXY);
+        glassBrush.TranslateTransform(panel.X, panel.Y);
+        g.FillPath(&glassBrush, &panelPath);
     } else {
         SolidBrush fallback(MakeColor(0.85f, Mix(g_palette.tint, Rgb{0.05f, 0.25f, 0.32f}, 0.5f)));
-        g.FillPath(&fallback, &pp);
+        g.FillPath(&fallback, &panelPath);
     }
 
-    // 2. Tint (stronger on bright wallpapers so white text always reads well).
-    float tintA = g_settings.glassTint / 100.0f;
-    tintA += (std::max)(0.0f, g_palette.avgLum - 0.42f) * 0.75f;
-    tintA = (std::clamp)(tintA, 0.0f, 0.92f);
-    SolidBrush tint(MakeColor(tintA, g_palette.tint));
-    g.FillPath(&tint, &pp);
+    // Tint, stronger on bright wallpapers so white text always reads well.
+    float tintAlpha = g_settings.glassTint / 100.0f;
+    tintAlpha += (std::max)(0.0f, g_palette.averageLuminance - 0.42f) * 0.75f;
+    tintAlpha = (std::clamp)(tintAlpha, 0.0f, 0.92f);
+    SolidBrush tintBrush(MakeColor(tintAlpha, g_palette.tint));
+    g.FillPath(&tintBrush, &panelPath);
 
-    // 3. Accent glow rising from the bottom.
+    // Accent glow rising from the bottom.
     {
-        g.SetClip(&pp);
-        GraphicsPath gp;
-        const float gw = L.panel.Width * 0.95f;
-        const float gh = L.panel.Height * 0.9f;
-        gp.AddEllipse(L.panel.X + (L.panel.Width - gw) / 2, L.panel.GetBottom() - gh * 0.5f, gw, gh);
-        PathGradientBrush pg(&gp);
-        pg.SetCenterColor(MakeColor(0.20f, g_palette.accent));
+        g.SetClip(&panelPath);
+        GraphicsPath glowPath;
+        const float glowW = panel.Width * 0.95f;
+        const float glowH = panel.Height * 0.9f;
+        glowPath.AddEllipse(panel.X + (panel.Width - glowW) / 2, panel.GetBottom() - glowH * 0.5f, glowW, glowH);
+        PathGradientBrush glowBrush(&glowPath);
+        glowBrush.SetCenterColor(MakeColor(0.20f, g_palette.accent));
         Color surround = MakeColor(0.0f, g_palette.accent);
-        int cnt = 1;
-        pg.SetSurroundColors(&surround, &cnt);
-        g.FillPath(&pg, &gp);
+        int surroundCount = 1;
+        glowBrush.SetSurroundColors(&surround, &surroundCount);
+        g.FillPath(&glowBrush, &glowPath);
         g.ResetClip();
     }
 
-    // 4. Glass sheen on the upper half.
+    // Glass sheen on the upper half.
     {
-        LinearGradientBrush sheen(PointF(0, L.panel.Y - 1), PointF(0, L.panel.GetBottom() + 1),
+        LinearGradientBrush sheen(PointF(0, panel.Y - 1), PointF(0, panel.GetBottom() + 1),
                                   Color(40, 255, 255, 255), Color(0, 255, 255, 255));
-        Color cols[3] = {Color(44, 255, 255, 255), Color(10, 255, 255, 255), Color(0, 255, 255, 255)};
-        REAL pos[3] = {0.0f, 0.45f, 1.0f};
-        sheen.SetInterpolationColors(cols, pos, 3);
-        g.FillPath(&sheen, &pp);
+        Color colors[3] = {Color(44, 255, 255, 255), Color(10, 255, 255, 255), Color(0, 255, 255, 255)};
+        REAL positions[3] = {0.0f, 0.45f, 1.0f};
+        sheen.SetInterpolationColors(colors, positions, 3);
+        g.FillPath(&sheen, &panelPath);
     }
 
-    // 5. Edge light: bright top edge fading to a faint bottom edge.
+    // Edge light: bright top edge fading to a faint bottom edge.
     {
-        const float inset = 0.6f * s;
-        GraphicsPath bp;
-        AddRoundRect(bp, RectF(L.panel.X + inset, L.panel.Y + inset, L.panel.Width - inset * 2, L.panel.Height - inset * 2),
-                     L.radius - inset);
-        LinearGradientBrush eb(PointF(0, L.panel.Y - 1), PointF(0, L.panel.GetBottom() + 1),
-                               Color(110, 255, 255, 255), Color(22, 255, 255, 255));
-        Pen pen(&eb, (std::max)(1.0f, 1.2f * s));
-        g.DrawPath(&pen, &bp);
+        const float inset = 0.6f * scale;
+        GraphicsPath edgePath;
+        AddRoundRect(edgePath,
+                     RectF(panel.X + inset, panel.Y + inset, panel.Width - inset * 2, panel.Height - inset * 2),
+                     layout.radius - inset);
+        LinearGradientBrush edgeBrush(PointF(0, panel.Y - 1), PointF(0, panel.GetBottom() + 1),
+                                      Color(110, 255, 255, 255), Color(22, 255, 255, 255));
+        Pen edgePen(&edgeBrush, (std::max)(1.0f, 1.2f * scale));
+        g.DrawPath(&edgePen, &edgePath);
     }
 }
 
-// ---------------------------------------------------------------------------
 // Frame drawing
-// ---------------------------------------------------------------------------
 
-static float ShadowK() {
-    float k = 0.8f + g_palette.avgLum * 1.0f;
-    if (!g_settings.showPanel) k *= 1.7f;
-    return k;
+// Text and digit shadows get darker on bright wallpapers and without the panel behind them.
+static float ShadowStrength() {
+    float strength = 0.8f + g_palette.averageLuminance * 1.0f;
+    if (!g_settings.showPanel) strength *= 1.7f;
+    return strength;
 }
 
 static void DrawGlyph(Graphics& g, int digit, float cellX, float alpha, float dy) {
-    const Layout& L = g_layout;
+    const Layout& layout = g_layout;
     if (digit < 0 || digit > 9 || alpha <= 0.003f) return;
-    const RectF& b = L.digitBounds[digit];
-    const float glyphH = L.glyphBottom - L.glyphTop;
-    const float tx = cellX + (L.cellW - b.Width) / 2.0f - b.X;
-    const float ty = L.digitsY + (L.digitsH - glyphH) / 2.0f - L.glyphTop + dy;
-    const float s = L.s;
-    const float sk = ShadowK();
+    const RectF& bounds = layout.digitBounds[digit];
+    const float glyphH = layout.glyphBottom - layout.glyphTop;
+    const float glyphX = cellX + (layout.digitCellW - bounds.Width) / 2.0f - bounds.X;
+    const float glyphY = layout.digitsY + (layout.digitsH - glyphH) / 2.0f - layout.glyphTop + dy;
+    const float shadowStrength = ShadowStrength();
 
-    const float offs[3] = {2.0f, 4.5f, 8.0f};
-    const float alph[3] = {0.20f, 0.12f, 0.06f};
+    const float shadowOffsets[3] = {2.0f, 4.5f, 8.0f};
+    const float shadowAlphas[3] = {0.20f, 0.12f, 0.06f};
     for (int i = 0; i < 3; ++i) {
-        g.TranslateTransform(tx, ty + offs[i] * s);
-        SolidBrush sb(Color(ToByte(alph[i] * sk * alpha), 0, 10, 16));
-        g.FillPath(&sb, L.digitPath[digit].get());
+        g.TranslateTransform(glyphX, glyphY + shadowOffsets[i] * layout.scale);
+        SolidBrush shadowBrush(Color(ToByte(shadowAlphas[i] * shadowStrength * alpha), 0, 10, 16));
+        g.FillPath(&shadowBrush, layout.digitPath[digit].get());
         g.ResetTransform();
     }
 
-    g.TranslateTransform(tx, ty);
+    g.TranslateTransform(glyphX, glyphY);
     const Rgb top{1.0f, 1.0f, 1.0f};
     const Rgb bottom = Mix(top, g_palette.accent, 0.22f);
-    LinearGradientBrush lb(PointF(0, L.glyphTop - 1), PointF(0, L.glyphBottom + 1), MakeColor(alpha, top),
-                           MakeColor(alpha, bottom));
-    g.FillPath(&lb, L.digitPath[digit].get());
+    LinearGradientBrush fillBrush(PointF(0, layout.glyphTop - 1), PointF(0, layout.glyphBottom + 1),
+                                  MakeColor(alpha, top), MakeColor(alpha, bottom));
+    g.FillPath(&fillBrush, layout.digitPath[digit].get());
     g.ResetTransform();
 }
 
+// Starts a roll for every digit that changed; right-most digit first, 80 ms apart.
 static void UpdateDigits(const int digits[4], ULONGLONG now) {
     int order = 0;
     for (int i = 3; i >= 0; --i) {
-        DigitAnim& a = g_digitAnim[i];
-        if (a.cur == digits[i]) continue;
-        if (a.cur < 0 || !g_settings.animateDigits) {
-            a.prev = -1;
+        DigitRoll& roll = g_digitRolls[i];
+        if (roll.current == digits[i]) continue;
+        if (roll.current < 0 || !g_settings.animateDigits) {
+            roll.previous = -1;
         } else {
-            a.prev = a.cur;
-            a.start = now + static_cast<ULONGLONG>(order) * 80;
+            roll.previous = roll.current;
+            roll.startTick = now + static_cast<ULONGLONG>(order) * 80;
             ++order;
         }
-        a.cur = digits[i];
+        roll.current = digits[i];
     }
 }
 
 static void DrawDigits(Graphics& g, ULONGLONG now) {
-    const Layout& L = g_layout;
-    const float glyphH = L.glyphBottom - L.glyphTop;
-    const float glyphY = L.digitsY + (L.digitsH - glyphH) / 2.0f;
-    const float roll = glyphH * 0.85f;
+    const Layout& layout = g_layout;
+    const float scale = layout.scale;
+    const float glyphH = layout.glyphBottom - layout.glyphTop;
+    const float glyphY = layout.digitsY + (layout.digitsH - glyphH) / 2.0f;
+    const float rollDistance = glyphH * 0.85f;
     for (int i = 0; i < 4; ++i) {
-        DigitAnim& a = g_digitAnim[i];
-        const float cx = L.cellX[i];
+        DigitRoll& roll = g_digitRolls[i];
+        const float cellX = layout.digitCellX[i];
         // Odometer window: digits roll in/out of the glyph band only.
-        g.SetClip(RectF(cx - 12 * L.s, glyphY - 3 * L.s, L.cellW + 24 * L.s, glyphH + 14 * L.s));
-        if (a.prev >= 0) {
-            const float t = now < a.start ? 0.0f : static_cast<float>(now - a.start) / 520.0f;
+        g.SetClip(RectF(cellX - 12 * scale, glyphY - 3 * scale, layout.digitCellW + 24 * scale,
+                        glyphH + 14 * scale));
+        if (roll.previous >= 0) {
+            const float t = now < roll.startTick ? 0.0f : static_cast<float>(now - roll.startTick) / 520.0f;
             if (t >= 1.0f) {
-                a.prev = -1;
-                DrawGlyph(g, a.cur, cx, 1.0f, 0);
+                roll.previous = -1;
+                DrawGlyph(g, roll.current, cellX, 1.0f, 0);
             } else {
-                const float e = EaseOutCubic(t);
-                DrawGlyph(g, a.prev, cx, 1.0f - e, -e * roll);
-                DrawGlyph(g, a.cur, cx, e, (1.0f - e) * roll);
+                const float eased = EaseOutCubic(t);
+                DrawGlyph(g, roll.previous, cellX, 1.0f - eased, -eased * rollDistance);
+                DrawGlyph(g, roll.current, cellX, eased, (1.0f - eased) * rollDistance);
             }
         } else {
-            DrawGlyph(g, a.cur, cx, 1.0f, 0);
+            DrawGlyph(g, roll.current, cellX, 1.0f, 0);
         }
         g.ResetClip();
     }
 }
 
 static void FillGlow(Graphics& g, float cx, float cy, float radius, const Rgb& c, float alpha) {
-    GraphicsPath p;
-    p.AddEllipse(cx - radius, cy - radius, radius * 2, radius * 2);
-    PathGradientBrush pg(&p);
-    pg.SetCenterColor(MakeColor(alpha, c));
+    GraphicsPath glowPath;
+    glowPath.AddEllipse(cx - radius, cy - radius, radius * 2, radius * 2);
+    PathGradientBrush glowBrush(&glowPath);
+    glowBrush.SetCenterColor(MakeColor(alpha, c));
     Color surround = MakeColor(0.0f, c);
-    int n = 1;
-    pg.SetSurroundColors(&surround, &n);
-    g.FillPath(&pg, &p);
+    int surroundCount = 1;
+    glowBrush.SetSurroundColors(&surround, &surroundCount);
+    g.FillPath(&glowBrush, &glowPath);
 }
 
 static void DrawColon(Graphics& g, ULONGLONG now) {
-    const Layout& L = g_layout;
-    const float s = L.s;
-    const float glyphH = L.glyphBottom - L.glyphTop;
-    const float mid = L.digitsY + L.digitsH / 2.0f;
+    const Layout& layout = g_layout;
+    const float glyphH = layout.glyphBottom - layout.glyphTop;
+    const float midY = layout.digitsY + layout.digitsH / 2.0f;
+    // Breathes on a 2 s sine cycle.
     const float breath = 0.5f + 0.5f * std::sin(static_cast<float>(now % 2000) / 2000.0f * 2 * kPi);
-    const float a = 0.55f + 0.45f * breath;
-    const float r = 6.0f * s;
-    for (float cy : {mid - glyphH * 0.19f, mid + glyphH * 0.19f}) {
-        FillGlow(g, L.colonX, cy, r * 3.6f, g_palette.accent, 0.42f * a);
-        SolidBrush dot(MakeColor(a, g_palette.accent));
-        g.FillEllipse(&dot, L.colonX - r, cy - r, r * 2, r * 2);
+    const float alpha = 0.55f + 0.45f * breath;
+    const float dotR = 6.0f * layout.scale;
+    for (float cy : {midY - glyphH * 0.19f, midY + glyphH * 0.19f}) {
+        FillGlow(g, layout.colonX, cy, dotR * 3.6f, g_palette.accent, 0.42f * alpha);
+        SolidBrush dot(MakeColor(alpha, g_palette.accent));
+        g.FillEllipse(&dot, layout.colonX - dotR, cy - dotR, dotR * 2, dotR * 2);
     }
 }
 
 static void DrawShadowedText(Graphics& g, const std::wstring& text, const Font& font, const PointF& at,
-                             const StringFormat& fmt, const Color& color) {
-    const float s = g_layout.s;
-    SolidBrush sh(Color(ToByte(0.30f * ShadowK()), 0, 10, 16));
-    g.DrawString(text.c_str(), -1, &font, PointF(at.X, at.Y + 1.5f * s), &fmt, &sh);
-    SolidBrush br(color);
-    g.DrawString(text.c_str(), -1, &font, at, &fmt, &br);
+                             const StringFormat& format, const Color& color) {
+    SolidBrush shadowBrush(Color(ToByte(0.30f * ShadowStrength()), 0, 10, 16));
+    g.DrawString(text.c_str(), -1, &font, PointF(at.X, at.Y + 1.5f * g_layout.scale), &format, &shadowBrush);
+    SolidBrush textBrush(color);
+    g.DrawString(text.c_str(), -1, &font, at, &format, &textBrush);
 }
 
 static void DrawSunMoon(Graphics& g, int period, float cx, float cy, float size) {
-    const float s = g_layout.s;
     if (period == 3) {
         // Crescent moon.
         GraphicsPath outer, inner;
         outer.AddEllipse(cx - size, cy - size, size * 2, size * 2);
         inner.AddEllipse(cx - size * 0.35f, cy - size * 1.25f, size * 2, size * 2);
-        Region rg(&outer);
-        rg.Exclude(&inner);
+        Region crescent(&outer);
+        crescent.Exclude(&inner);
         FillGlow(g, cx, cy, size * 2.4f, Rgb{0.80f, 0.86f, 1.0f}, 0.22f);
-        SolidBrush br(Color(240, 232, 240, 255));
-        g.FillRegion(&br, &rg);
+        SolidBrush moonBrush(Color(240, 232, 240, 255));
+        g.FillRegion(&moonBrush, &crescent);
         return;
     }
-    const Rgb c = period == 0 ? Rgb{1.0f, 0.86f, 0.45f} : (period == 1 ? Rgb{1.0f, 0.82f, 0.30f} : Rgb{1.0f, 0.62f, 0.35f});
-    FillGlow(g, cx, cy, size * 2.6f, c, 0.30f);
-    SolidBrush core(MakeColor(1.0f, c));
-    const float cr = size * 0.55f;
-    g.FillEllipse(&core, cx - cr, cy - cr, cr * 2, cr * 2);
-    Pen ray(MakeColor(0.95f, c), (std::max)(1.0f, 1.8f * s));
+    const Rgb sunColor = period == 0 ? Rgb{1.0f, 0.86f, 0.45f}
+                                     : (period == 1 ? Rgb{1.0f, 0.82f, 0.30f} : Rgb{1.0f, 0.62f, 0.35f});
+    FillGlow(g, cx, cy, size * 2.6f, sunColor, 0.30f);
+    SolidBrush core(MakeColor(1.0f, sunColor));
+    const float coreR = size * 0.55f;
+    g.FillEllipse(&core, cx - coreR, cy - coreR, coreR * 2, coreR * 2);
+    Pen ray(MakeColor(0.95f, sunColor), (std::max)(1.0f, 1.8f * g_layout.scale));
     ray.SetStartCap(LineCapRound);
     ray.SetEndCap(LineCapRound);
     for (int i = 0; i < 8; ++i) {
-        const float ang = i * kPi / 4.0f;
-        const float r0 = size * 0.85f, r1 = size * 1.2f;
-        g.DrawLine(&ray, cx + std::cos(ang) * r0, cy + std::sin(ang) * r0, cx + std::cos(ang) * r1,
-                   cy + std::sin(ang) * r1);
+        const float angle = i * kPi / 4.0f;
+        const float innerR = size * 0.85f, outerR = size * 1.2f;
+        g.DrawLine(&ray, cx + std::cos(angle) * innerR, cy + std::sin(angle) * innerR,
+                   cx + std::cos(angle) * outerR, cy + std::sin(angle) * outerR);
     }
 }
 
 static void DrawGreeting(Graphics& g, const SYSTEMTIME& st) {
-    const Layout& L = g_layout;
-    const float s = L.s;
+    const Layout& layout = g_layout;
+    const float scale = layout.scale;
     const int period = DayPeriod(st.wHour);
     const std::wstring text = GreetingText(period);
 
-    StringFormat fmt(StringFormat::GenericTypographic());
-    RectF tb;
-    g.MeasureString(text.c_str(), -1, L.greetFont.get(), PointF(0, 0), &fmt, &tb);
-    const float icon = 9.0f * s;
-    const float gap = 12.0f * s;
-    const float total = icon * 2 + gap + tb.Width;
-    const float cx = L.panel.X + L.panel.Width / 2.0f;
-    const float x = cx - total / 2.0f;
-    const float cy = L.greetY + L.greetH / 2.0f;
+    StringFormat typographic(StringFormat::GenericTypographic());
+    RectF textBounds;
+    g.MeasureString(text.c_str(), -1, layout.labelFont.get(), PointF(0, 0), &typographic, &textBounds);
+    const float iconR = 9.0f * scale;
+    const float gap = 12.0f * scale;
+    const float rowW = iconR * 2 + gap + textBounds.Width;
+    const float x = layout.panel.X + layout.panel.Width / 2.0f - rowW / 2.0f;
+    const float cy = layout.greetingY + layout.greetingH / 2.0f;
 
-    DrawSunMoon(g, period, x + icon, cy, icon);
-    DrawShadowedText(g, text, *L.greetFont, PointF(x + icon * 2 + gap, cy - tb.Height / 2.0f), fmt,
-                     Color(220, 240, 250, 255));
+    DrawSunMoon(g, period, x + iconR, cy, iconR);
+    DrawShadowedText(g, text, *layout.labelFont, PointF(x + iconR * 2 + gap, cy - textBounds.Height / 2.0f),
+                     typographic, Color(220, 240, 250, 255));
 }
 
 static void DrawSecondsBar(Graphics& g, const SYSTEMTIME& st) {
-    const Layout& L = g_layout;
-    const float s = L.s;
-    const float trackW = 360.0f * s;
-    const float trackH = 4.0f * s;
-    const float trackX = L.panel.X + (L.panel.Width - trackW) / 2.0f;
-    const float trackY = L.barY;
+    const Layout& layout = g_layout;
+    const float scale = layout.scale;
+    const float trackW = 360.0f * scale;
+    const float trackH = 4.0f * scale;
+    const float trackX = layout.panel.X + (layout.panel.Width - trackW) / 2.0f;
+    const float trackY = layout.barY;
 
     GraphicsPath track;
     AddCapsule(track, trackX, trackY, trackW, trackH);
@@ -1411,111 +1393,134 @@ static void DrawSecondsBar(Graphics& g, const SYSTEMTIME& st) {
     if (fillW >= trackH) {
         GraphicsPath fill;
         AddCapsule(fill, trackX, trackY, fillW, trackH);
-        LinearGradientBrush fb(PointF(trackX - 1, trackY), PointF(trackX + trackW + 1, trackY),
-                               MakeColor(1.0f, g_palette.accent), MakeColor(1.0f, g_palette.accent2));
-        g.FillPath(&fb, &fill);
+        LinearGradientBrush fillBrush(PointF(trackX - 1, trackY), PointF(trackX + trackW + 1, trackY),
+                                      MakeColor(1.0f, g_palette.accent), MakeColor(1.0f, g_palette.accentEnd));
+        g.FillPath(&fillBrush, &fill);
     }
 
-    const float hx = trackX + (std::max)(fillW, trackH / 2.0f);
-    const float hy = trackY + trackH / 2.0f;
-    const float hr = 5.0f * s;
-    FillGlow(g, hx, hy, hr * 3.2f, g_palette.accent, 0.45f);
+    const float headX = trackX + (std::max)(fillW, trackH / 2.0f);
+    const float headY = trackY + trackH / 2.0f;
+    const float headR = 5.0f * scale;
+    FillGlow(g, headX, headY, headR * 3.2f, g_palette.accent, 0.45f);
     SolidBrush head(MakeColor(1.0f, Mix(g_palette.accent, Rgb{1, 1, 1}, 0.45f)));
-    g.FillEllipse(&head, hx - hr, hy - hr, hr * 2, hr * 2);
+    g.FillEllipse(&head, headX - headR, headY - headR, headR * 2, headR * 2);
 }
 
 static void DrawDateRow(Graphics& g, const SYSTEMTIME& st) {
-    const Layout& L = g_layout;
-    const float s = L.s;
+    const Layout& layout = g_layout;
+    const float scale = layout.scale;
     const std::wstring date = FormatDate(st);
-    StringFormat fmt(StringFormat::GenericTypographic());
-    RectF db;
-    g.MeasureString(date.c_str(), -1, L.dateFont.get(), PointF(0, 0), &fmt, &db);
+    StringFormat typographic(StringFormat::GenericTypographic());
+    RectF dateBounds;
+    g.MeasureString(date.c_str(), -1, layout.labelFont.get(), PointF(0, 0), &typographic, &dateBounds);
 
-    wchar_t pct[16]{};
+    wchar_t percentText[16]{};
     const float dayProgress = (st.wHour * 3600.0f + st.wMinute * 60.0f + st.wSecond) / 86400.0f;
-    swprintf_s(pct, L"%d%%", static_cast<int>(dayProgress * 100.0f));
-    RectF pb;
-    const bool ring = g_settings.showDayProgress;
-    const float ringD = 17.0f * s;
-    const float sep = 18.0f * s;
-    float total = db.Width;
-    if (ring) {
-        g.MeasureString(pct, -1, L.smallFont.get(), PointF(0, 0), &fmt, &pb);
-        total += sep + ringD + 7.0f * s + pb.Width;
+    swprintf_s(percentText, L"%d%%", static_cast<int>(dayProgress * 100.0f));
+    RectF percentBounds;
+    const bool showRing = g_settings.showDayProgress;
+    const float ringD = 17.0f * scale;
+    const float ringGap = 18.0f * scale;
+    float rowW = dateBounds.Width;
+    if (showRing) {
+        g.MeasureString(percentText, -1, layout.percentFont.get(), PointF(0, 0), &typographic, &percentBounds);
+        rowW += ringGap + ringD + 7.0f * scale + percentBounds.Width;
     }
 
-    const float cx = L.panel.X + L.panel.Width / 2.0f;
-    float x = cx - total / 2.0f;
-    const float cy = L.dateY + L.dateH / 2.0f;
-    DrawShadowedText(g, date, *L.dateFont, PointF(x, cy - db.Height / 2.0f), fmt, Color(230, 244, 252, 255));
-    x += db.Width;
+    float x = layout.panel.X + layout.panel.Width / 2.0f - rowW / 2.0f;
+    const float cy = layout.dateY + layout.dateH / 2.0f;
+    DrawShadowedText(g, date, *layout.labelFont, PointF(x, cy - dateBounds.Height / 2.0f), typographic,
+                     Color(230, 244, 252, 255));
+    x += dateBounds.Width;
 
-    if (!ring) return;
-    x += sep;
-    const float th = (std::max)(1.5f, 2.6f * s);
-    RectF rr(x, cy - ringD / 2.0f, ringD, ringD);
-    Pen trackPen(Color(60, 255, 255, 255), th);
-    g.DrawEllipse(&trackPen, rr);
-    LinearGradientBrush ab(PointF(rr.X, rr.Y), PointF(rr.GetRight(), rr.GetBottom()),
-                           MakeColor(1.0f, g_palette.accent), MakeColor(1.0f, g_palette.accent2));
-    Pen arc(&ab, th);
+    if (!showRing) return;
+    x += ringGap;
+    const float ringWidth = (std::max)(1.5f, 2.6f * scale);
+    RectF ringRect(x, cy - ringD / 2.0f, ringD, ringD);
+    Pen trackPen(Color(60, 255, 255, 255), ringWidth);
+    g.DrawEllipse(&trackPen, ringRect);
+    LinearGradientBrush arcBrush(PointF(ringRect.X, ringRect.Y), PointF(ringRect.GetRight(), ringRect.GetBottom()),
+                                 MakeColor(1.0f, g_palette.accent), MakeColor(1.0f, g_palette.accentEnd));
+    Pen arc(&arcBrush, ringWidth);
     arc.SetStartCap(LineCapRound);
     arc.SetEndCap(LineCapRound);
     const float sweep = (std::max)(2.0f, 360.0f * dayProgress);
-    g.DrawArc(&arc, rr, -90.0f, sweep);
-    x += ringD + 7.0f * s;
-    DrawShadowedText(g, pct, *L.smallFont, PointF(x, cy - pb.Height / 2.0f), fmt,
-                     MakeColor(0.95f, Mix(g_palette.accent, Rgb{1, 1, 1}, 0.35f)));
+    g.DrawArc(&arc, ringRect, -90.0f, sweep);
+    x += ringD + 7.0f * scale;
+    DrawShadowedText(g, percentText, *layout.percentFont, PointF(x, cy - percentBounds.Height / 2.0f),
+                     typographic, MakeColor(0.95f, Mix(g_palette.accent, Rgb{1, 1, 1}, 0.35f)));
+}
+
+static void SetDrawQuality(Graphics& g) {
+    g.SetSmoothingMode(SmoothingModeAntiAlias);
+    g.SetPixelOffsetMode(PixelOffsetModeHalf);
+    g.SetTextRenderingHint(TextRenderingHintAntiAlias);
+    g.SetCompositingQuality(CompositingQualityHighQuality);
+}
+
+static void DrawContentLayer(const SYSTEMTIME& st, ULONGLONG now) {
+    const Layout& layout = g_layout;
+    g_contentLayer = g_staticLayer;
+    Bitmap contentBitmap(layout.winW, layout.winH, layout.winW * 4, PixelFormat32bppPARGB,
+                         reinterpret_cast<BYTE*>(g_contentLayer.data()));
+    Graphics g(&contentBitmap);
+    SetDrawQuality(g);
+
+    DrawDigits(g, now);
+    if (!g_settings.use24Hour) {
+        StringFormat typographic(StringFormat::GenericTypographic());
+        const std::wstring meridiem = st.wHour >= 12 ? L"PM" : L"AM";
+        const float x = layout.digitCellX[3] + layout.digitCellW + 10.0f * layout.scale;
+        const float y = layout.digitsY + layout.digitsH * 0.62f;
+        DrawShadowedText(g, meridiem, *layout.labelFont, PointF(x, y), typographic,
+                         MakeColor(1.0f, Mix(g_palette.accent, Rgb{1, 1, 1}, 0.2f)));
+    }
+    if (g_settings.showGreeting) DrawGreeting(g, st);
+    if (g_settings.showDate) DrawDateRow(g, st);
 }
 
 static void RenderFrame(ULONGLONG now) {
-    const Layout& L = g_layout;
-    if (!g_frameBmp || !g_frameBits || g_static.size() != static_cast<size_t>(L.winW) * L.winH) return;
+    const Layout& layout = g_layout;
+    if (!g_frameBitmap || !g_frameBits || g_staticLayer.size() != static_cast<size_t>(layout.winW) * layout.winH)
+        return;
 
     SYSTEMTIME st{};
     GetLocalTime(&st);
 
-    memcpy(g_frameBits, g_static.data(), g_static.size() * 4);
+    int hour = st.wHour;
+    if (!g_settings.use24Hour) {
+        hour %= 12;
+        if (hour == 0) hour = 12;
+    }
+    const int digits[4] = {hour / 10, hour % 10, st.wMinute / 10, st.wMinute % 10};
+    UpdateDigits(digits, now);
+    // Checked before drawing: the frame that finishes a roll must still be redrawn and cached.
+    bool rolling = false;
+    for (const DigitRoll& roll : g_digitRolls) rolling |= roll.previous >= 0;
 
-    {
-        Graphics g(g_frameBmp.get());
-        g.SetSmoothingMode(SmoothingModeAntiAlias);
-        g.SetPixelOffsetMode(PixelOffsetModeHalf);
-        g.SetTextRenderingHint(TextRenderingHintAntiAlias);
-        g.SetCompositingQuality(CompositingQualityHighQuality);
-
-        int hour = st.wHour;
-        if (!g_settings.use24Hour) {
-            hour %= 12;
-            if (hour == 0) hour = 12;
-        }
-        const int digits[4] = {hour / 10, hour % 10, st.wMinute / 10, st.wMinute % 10};
-        UpdateDigits(digits, now);
-        DrawDigits(g, now);
-        DrawColon(g, now);
-
-        if (!g_settings.use24Hour) {
-            StringFormat fmt(StringFormat::GenericTypographic());
-            const std::wstring mer = st.wHour >= 12 ? L"PM" : L"AM";
-            const float x = L.cellX[3] + L.cellW + 10.0f * L.s;
-            const float y = L.digitsY + L.digitsH * 0.62f;
-            DrawShadowedText(g, mer, *L.greetFont, PointF(x, y), fmt,
-                             MakeColor(1.0f, Mix(g_palette.accent, Rgb{1, 1, 1}, 0.2f)));
-        }
-
-        if (g_settings.showGreeting) DrawGreeting(g, st);
-        if (g_settings.showSeconds) DrawSecondsBar(g, st);
-        if (g_settings.showDate) DrawDateRow(g, st);
+    SYSTEMTIME second = st;
+    second.wMilliseconds = 0;
+    if (g_contentDirty || rolling || memcmp(&second, &g_contentTime, sizeof(second)) != 0) {
+        DrawContentLayer(st, now);
+        g_contentTime = second;
+        g_contentDirty = false;
     }
 
-    const float fade = EaseOutCubic(static_cast<float>(now - g_fadeStart) / 700.0f);
-    POINT dst = L.pos;
-    SIZE size{L.winW, L.winH};
+    memcpy(g_frameBits, g_contentLayer.data(), g_contentLayer.size() * 4);
+    {
+        Graphics g(g_frameBitmap.get());
+        SetDrawQuality(g);
+        DrawColon(g, now);
+        if (g_settings.showSeconds) DrawSecondsBar(g, st);
+    }
+
+    const float fade = EaseOutCubic(static_cast<float>(now - g_fadeInStart) / 700.0f);
+    POINT dst = layout.pos;
+    SIZE size{layout.winW, layout.winH};
     POINT src{0, 0};
     BLENDFUNCTION blend{AC_SRC_OVER, 0, ToByte(fade), AC_SRC_ALPHA};
     HDC screenDc = GetDC(nullptr);
-    UpdateLayeredWindow(g_clockWindow, screenDc, &dst, &size, g_memDc, &src, 0, &blend, ULW_ALPHA);
+    UpdateLayeredWindow(g_clockWindow, screenDc, &dst, &size, g_frameDc, &src, 0, &blend, ULW_ALPHA);
     ReleaseDC(nullptr, screenDc);
 }
 
@@ -1529,34 +1534,32 @@ static void Tick() {
     if (!g_clockWindow) return;
     const ULONGLONG now = GetTickCount64();
 
-    if (now - g_lastFsCheck >= 1000) {
-        g_lastFsCheck = now;
+    if (now - g_lastFullscreenCheck >= 1000) {
+        g_lastFullscreenCheck = now;
         g_paused = IsFullscreenAppRunning();
     }
     if (g_paused) return;
 
-    if (g_canvasDirty || g_forceWallCheck || now - g_lastWallCheck >= 5000) {
-        g_lastWallCheck = now;
-        CheckWallpaper(g_canvasDirty || g_forceWallCheck);
+    if (g_canvasDirty || g_forceWallpaperCheck || now - g_lastWallpaperCheck >= 5000) {
+        g_lastWallpaperCheck = now;
+        CheckWallpaper(g_canvasDirty || g_forceWallpaperCheck);
         g_canvasDirty = false;
-        g_forceWallCheck = false;
+        g_forceWallpaperCheck = false;
     }
     if (g_layoutDirty) BuildLayout();
     if (g_glassDirty) BuildGlass();
-    if (g_staticDirty) BuildStatic();
+    if (g_staticDirty) BuildStaticLayer();
     RenderFrame(now);
 }
 
-// ---------------------------------------------------------------------------
-// Window / thread
-// ---------------------------------------------------------------------------
+// Window and thread
 
 static LRESULT CALLBACK ClockWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_TIMER:
-            if (wParam == kReloadTimerId) {
-                KillTimer(hwnd, kReloadTimerId);
-                g_forceWallCheck = true;
+            if (wParam == kWallpaperReloadTimerId) {
+                KillTimer(hwnd, kWallpaperReloadTimerId);
+                g_forceWallpaperCheck = true;
             }
             Tick();
             return 0;
@@ -1564,16 +1567,16 @@ static LRESULT CALLBACK ClockWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
         case WM_APP_REFRESH:
             LoadSettings();
             g_userName = DetectUserName();
-            for (auto& a : g_digitAnim) a = DigitAnim{};
+            for (auto& roll : g_digitRolls) roll = DigitRoll{};
             g_layoutDirty = true;
-            g_forceWallCheck = true;
+            g_forceWallpaperCheck = true;
             Tick();
             return 0;
 
         case WM_SETTINGCHANGE:
             if (wParam == SPI_SETDESKWALLPAPER) {
                 // Give Windows a moment to finish writing the new wallpaper.
-                SetTimer(hwnd, kReloadTimerId, 600, nullptr);
+                SetTimer(hwnd, kWallpaperReloadTimerId, 600, nullptr);
             } else {
                 g_glassDirty = true;  // accent colour / theme may have changed
             }
@@ -1593,8 +1596,8 @@ static LRESULT CALLBACK ClockWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
             return HTTRANSPARENT;
 
         case WM_DESTROY:
-            KillTimer(hwnd, kTimerId);
-            KillTimer(hwnd, kReloadTimerId);
+            KillTimer(hwnd, kFrameTimerId);
+            KillTimer(hwnd, kWallpaperReloadTimerId);
             PostQuitMessage(0);
             return 0;
     }
@@ -1603,14 +1606,15 @@ static LRESULT CALLBACK ClockWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 
 static void ReleaseGraphicsResources() {
     FreeFrameBuffer();
-    g_glass.reset();
-    for (auto& p : g_layout.digitPath) p.reset();
-    g_layout.greetFont.reset();
-    g_layout.dateFont.reset();
-    g_layout.smallFont.reset();
-    g_layout.textFamily.reset();
-    g_static.clear();
-    g_canvas = WallCanvas{};
+    g_glassBitmap.reset();
+    for (auto& path : g_layout.digitPath) path.reset();
+    g_layout.labelFont.reset();
+    g_layout.percentFont.reset();
+    g_layout.labelFamily.reset();
+    g_staticLayer.clear();
+    g_contentLayer.clear();
+    g_contentDirty = true;
+    g_wallpaper = WallpaperCanvas{};
 }
 
 static DWORD WINAPI ClockThreadProc(void*) {
@@ -1618,12 +1622,12 @@ static DWORD WINAPI ClockThreadProc(void*) {
 
     // Work in physical pixels on every monitor / scale.
     SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    const HRESULT coHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const HRESULT comInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     GdiplusStartupInput startupInput;
     if (GdiplusStartup(&g_gdiplusToken, &startupInput, nullptr) != Ok) {
         Wh_Log(L"Desktop Glass Clock: GDI+ startup failed");
-        if (SUCCEEDED(coHr)) CoUninitialize();
+        if (SUCCEEDED(comInit)) CoUninitialize();
         return 0;
     }
 
@@ -1631,13 +1635,13 @@ static DWORD WINAPI ClockThreadProc(void*) {
     g_userName = DetectUserName();
 
     const wchar_t kClassName[] = L"WindhawkDesktopGlassClock";
-    WNDCLASSEXW wc{};
-    wc.cbSize = sizeof(wc);
-    wc.hInstance = g_hInstance;
-    wc.lpfnWndProc = ClockWndProc;
-    wc.lpszClassName = kClassName;
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    RegisterClassExW(&wc);
+    WNDCLASSEXW windowClass{};
+    windowClass.cbSize = sizeof(windowClass);
+    windowClass.hInstance = g_hInstance;
+    windowClass.lpfnWndProc = ClockWndProc;
+    windowClass.lpszClassName = kClassName;
+    windowClass.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    RegisterClassExW(&windowClass);
 
     g_clockWindow = CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
                                     kClassName, L"", WS_POPUP | WS_VISIBLE, 0, 0, 1, 1, nullptr, nullptr,
@@ -1647,7 +1651,7 @@ static DWORD WINAPI ClockThreadProc(void*) {
         UnregisterClassW(kClassName, g_hInstance);
         GdiplusShutdown(g_gdiplusToken);
         g_gdiplusToken = 0;
-        if (SUCCEEDED(coHr)) CoUninitialize();
+        if (SUCCEEDED(comInit)) CoUninitialize();
         return 0;
     }
 
@@ -1658,9 +1662,9 @@ static DWORD WINAPI ClockThreadProc(void*) {
     }
     ShowWindow(g_clockWindow, SW_SHOWNOACTIVATE);
 
-    g_fadeStart = GetTickCount64();
+    g_fadeInStart = GetTickCount64();
     Tick();
-    SetTimer(g_clockWindow, kTimerId, 33, nullptr);
+    SetTimer(g_clockWindow, kFrameTimerId, 33, nullptr);
 
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
@@ -1676,7 +1680,7 @@ static DWORD WINAPI ClockThreadProc(void*) {
         GdiplusShutdown(g_gdiplusToken);
         g_gdiplusToken = 0;
     }
-    if (SUCCEEDED(coHr)) CoUninitialize();
+    if (SUCCEEDED(comInit)) CoUninitialize();
     return 0;
 }
 

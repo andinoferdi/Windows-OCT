@@ -26,8 +26,8 @@ TAI lets you transform your Windows 11 taskbar into a smooth floating dock witho
 # Bug reports
 Please file bug reports here: https://github.com/DarkionAvey/windhawk-taskbar-centered-condensed/issues
 ---
-## 🚀 How to Install (Development Build)
-⚠️ **Note:** Please disable any mods that affect taskbar height or taskbar icons—this mod already includes those
+## How to Install (Development Build)
+**Note:** Please disable any mods that affect taskbar height or taskbar icons—this mod already includes those
 features.
 1. [Install Windhawk](https://windhawk.net/) if you haven't already.
 2. Copy the contents of [
@@ -41,16 +41,16 @@ features.
 ## 🛠 Source Code
 The actual mod code is split into files under [
 `mod-parts/`](https://github.com/DarkionAvey/windhawk-taskbar-centered-condensed/blob/main/mod-parts/), which are later merged together using a Python script.
-❗ **Do not edit `assembled-mod.cpp` manually**, as any changes will be overwritten in the next build cycle. Instead,
+**Do not edit `assembled-mod.cpp` manually**, as any changes will be overwritten in the next build cycle. Instead,
 modify the source files in the `mod-parts` directory.
 ---
-## 🙌 Credits
+## Credits
 Huge thanks to these awesome developers who made this mod possible -- your contributions to modding Windows are truly appreciated!:
 - [`Michael Maltsev (m417z)`](https://github.com/m417z)
 - [`Valentin Radu (valinet)`](https://github.com/valinet)
 - [`TranslucentTB team`](https://github.com/translucenttb/translucenttb)
 ---
-## 🔥 Recommended Mods
+## Recommended Mods
 - [Taskbar Fluent Media Player](https://windhawk.net/mods/taskbar-fluent-media-player) \[Set player position to Tray\]
 - [Smart Auto Hide for Taskbar](https://windhawk.net/mods/taskbar-auto-hide-when-maximized)
 - [Taskbar Auto-Hide Speed/Frame Rate](https://windhawk.net/mods/taskbar-auto-hide-speed)

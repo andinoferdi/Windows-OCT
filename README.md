@@ -8,8 +8,8 @@ Setup tampilan Windows 11 saya: taskbar melayang seperti dock dan jam kaca (fros
 
 | File | Fungsi |
 | --- | --- |
-| `TASKBAR MOD.cpp` | Mod Windhawk **TAI (Taskbar as Island)** v1.5.258, versi yang sudah di-patch supaya jalan di Windows 11 26H2. Bikin taskbar melayang di tengah, sudutnya membulat, dan tray-nya menempel di samping ikon aplikasi. |
-| `CLOCK.cpp` | Mod Windhawk **Desktop Glass Clock** v1.0.0. Jam kaca di desktop dengan sapaan, tanggal, bar detik, dan progress hari. Warna aksennya otomatis mengikuti wallpaper. |
+| `TASKBAR MOD.cpp` | Mod Windhawk **TAI (Taskbar as Island)** v1.5.259, versi yang sudah di-patch supaya jalan di Windows 11 26H2. Bikin taskbar melayang di tengah, sudutnya membulat, dan tray-nya menempel di samping ikon aplikasi. Ditambah efek **kembaran jam**: kaca bertint, glow aksen dari bawah, kilau kaca, edge light, indikator aplikasi dan hover berwarna aksen. |
+| `CLOCK.cpp` | Mod Windhawk **Desktop Glass Clock** v1.1.0. Jam kaca di desktop dengan sapaan, tanggal, bar detik, dan progress hari. Warna aksennya otomatis mengikuti wallpaper, lalu dibagikan ke taskbar supaya warnanya sama persis. |
 | `space-art-nebula-8k-jy.jpg` | Wallpaper nebula 8K. |
 | `Screenshot.png` | Contoh hasil akhirnya. |
 
@@ -117,6 +117,29 @@ Beberapa pengaturan yang sering diubah:
 | Taskbar corner radius | 22 | Makin besar, sudutnya makin bulat. |
 | Background blur amount | 30 | Kekuatan blur di belakang taskbar. |
 | Full-width taskbar background | Off | On = latar taskbar selebar layar seperti bawaan Windows. |
+| Accent effects (twin of Desktop Glass Clock) | On | Saklar utama semua efek aksen di bawah. Off = tampilan TAI biasa. |
+| Accent source | Desktop Glass Clock | Sumber warna aksen. Bisa juga *Windows accent color* atau *Custom color*. |
+| Custom accent color | `#F05CD0` | Dipakai kalau Accent source = Custom. |
+| Accent glass tint (%) | 38 | Tint gelap kaca yang senada wallpaper, sama seperti panel jam. 0 = pakai pengaturan tint biasa. |
+| Accent glow (%) | 30 | Kekuatan glow aksen yang naik dari bawah dock. 0 = mati. |
+| Glass sheen | On | Kilau putih tipis di setengah atas dock. |
+| Edge light | On | Garis tepi putih terang di atas yang memudar ke warna aksen di bawah. |
+| Accent running indicators | On | Garis di bawah ikon aplikasi jadi warna aksen. Aplikasi yang minta perhatian (berkedip) tetap pakai warna Windows. |
+| Accent hover glow | On | Latar tombol berpendar aksen saat di-hover atau diklik. Tidak tampil selama Dock animation aktif. |
+| Dock animation | On | Hover ala macOS: tombol di dekat kursor membesar dan tetangganya bergeser memberi ruang. Mati sendiri kalau *Animation effects* Windows dimatikan. |
+| Dock animation size (%) | 130 | Ukuran tombol tepat di bawah kursor. |
+| Dock animation reach (px) | 100 | Seberapa jauh dari kursor tombol masih ikut membesar. |
+| Dock animation curve | Cosine | Bentuk penurunan ukuran: *Cosine* (halus), *Linear*, atau *Exponential* (puncak tajam). |
+| Dock animation spacing (%) | 50 | Seberapa jauh tetangga bergeser. 0 = tidak bergeser. |
+| Dock animation follow speed | 60 | Seberapa cepat tombol mengejar kursor. 0 = langsung. |
+| Dock animation fade (ms) | 150 | Lama efek muncul saat kursor masuk dan hilang saat keluar. |
+| Dock animation bounce | On | Tombol di bawah kursor yang diam memantul pelan. |
+| Dock animation bounce delay (ms) | 500 | Lama kursor harus diam sebelum mulai memantul. |
+| Dock animation bounce lift | On | Pantulan mengangkat tombol. Off = hanya membesar-mengecil. |
+| Dock animation labels mode | Off | Nyalakan kalau label taskbar ditampilkan. |
+| Dock animation system buttons | All buttons | Apakah Start, Search, Task View dan Widgets ikut beranimasi. |
+
+> Taskbar mengambil warna aksen dari mod jam lewat registry `HKCU\Software\Windows-OCT`. Jadi setelah update repo ini, **compile ulang kedua mod**. Kalau mod jam tidak dipasang, taskbar memakai warna aksen Windows.
 
 ---
 
@@ -129,6 +152,9 @@ Beberapa pengaturan yang sering diubah:
 | Taskbar tidak blur, warnanya solid | Nyalakan **Transparency effects** dan matikan **Energy saver**. |
 | Jam tidak kelihatan | Jam otomatis disembunyikan saat ada game atau aplikasi fullscreen, jadi tutup dulu aplikasinya. Pastikan juga mod-nya **Enabled** di tab Home. |
 | Warna jam tidak cocok setelah ganti wallpaper | Biasanya warnanya menyesuaikan sendiri. Kalau tidak, matikan lalu nyalakan lagi mod jamnya. |
+| Warna taskbar beda dari jam | Pastikan mod jam **Enabled** dan sudah di-compile ulang (v1.1.0), lalu cek setting TAI **Accent source** = *Desktop Glass Clock*. |
+| Ikon taskbar beranimasi dobel atau melompat | Animasi dock sudah ada di TAI. Matikan mod **Taskbar Dock Animation** (atau mod dock lain) di Windhawk. |
+| Efek aksen bikin taskbar terasa aneh | Matikan **Accent effects** di Settings mod TAI untuk kembali ke tampilan TAI biasa, atau matikan efeknya satu per satu. |
 | Setelah update Windows, mod error | Klik **Details** → **Edit**, lalu **Compile Mod** ulang. Kalau tetap error, cek versi terbaru mod TAI di repo aslinya (lihat Kredit). |
 
 ## Mengembalikan ke tampilan bawaan

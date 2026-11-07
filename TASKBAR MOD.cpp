@@ -2,7 +2,7 @@
 // @id              taskbar-dock-like
 // @name            TAI (taskbar as island) for Windows 11 - 26H2 Compatibility
 // @description     Centers and floats the taskbar, moves the system tray next to the task area, and serves as an all-in-one, one-click mod to transform the taskbar into an animated dock.
-// @version         1.5.258
+// @version         1.5.259
 // @author          DarkionAvey
 // @github          https://github.com/DarkionAvey
 // @include         explorer.exe
@@ -14,6 +14,8 @@
 // ==/WindhawkMod==
 // This mod is based on code released under the GNU General Public License v3.0.
 // 26H2 compatibility patch: unstable shell symbols are optional and startup degrades gracefully.
+// Windows-OCT accent twin (local addition): tinted glass, glow, sheen, edge light, accent running
+// indicators and hover glow, colored with the palette shared by the Desktop Glass Clock mod.
 // For bug reports and feedback:
 // https://github.com/DarkionAvey/windhawk-taskbar-centered-condensed
 // ==WindhawkModReadme==
@@ -94,6 +96,27 @@ Huge thanks to these awesome developers who made this mod possible -- your contr
 | `MoveFlyoutControlCenter` | Move Control Center with Taskbar | When enabled, the Control Center is moved to align with taskbar size and location. Default is on. | Boolean (true/false) |
 | `MoveFlyoutNotificationCenter` | Move Notification Center with Taskbar | When enabled, the Notification Center is moved to align with taskbar size and location. Default is on. | Boolean (true/false) |
 | `AlignFlyoutInner` | Align flyout windows to the inside of the taskbar | When enabled, the flyout windows will be aligned within the bounds of the taskbar. When off, they will be 50% inside the taskbar bounds. Default is on. | Boolean (true/false) |
+| `AccentEffects` | Accent effects (twin of Desktop Glass Clock) | Master switch for all accent effects below. Default is on | Boolean (true/false) |
+| `AccentSource` | Accent source | `clock` (shared by Desktop Glass Clock, falls back to the Windows accent), `windows` or `custom`. Default is clock | Option |
+| `CustomAccent` | Custom accent color | Used when Accent source is custom. Default is #F05CD0 | `#RRGGBB` |
+| `AccentGlassTint` | Accent glass tint (%) | Wallpaper-matched dark tint on the glass. 0 = normal tint settings. Default is 38 | 0-100 |
+| `AccentGlow` | Accent glow (%) | Accent glow rising from the bottom of the dock. 0 = off. Default is 30 | 0-100 |
+| `AccentSheen` | Glass sheen | White sheen on the upper half. Default is on | Boolean (true/false) |
+| `AccentEdgeLight` | Edge light | Border bright white at the top, fading to the accent at the bottom. Default is on | Boolean (true/false) |
+| `AccentRunningIndicators` | Accent running indicators | Accent-colored running indicators; attention keeps the Windows color. Default is on | Boolean (true/false) |
+| `AccentHoverGlow` | Accent hover glow | Accent background on hover and press. Default is on | Boolean (true/false) |
+| `DockMagnify` | Dock animation | macOS-style hover: buttons near the cursor grow and neighbours move apart, anchored at the bottom. Replaces the hover square while on. Off when Windows animation effects are off. Default is on | Boolean (true/false) |
+| `DockMagnifyScale` | Dock animation size (%) | Size of the button right under the cursor. Default is 130 | 101-220 |
+| `DockMagnifyReach` | Dock animation reach (px) | How far from the cursor buttons still grow. Default is 100 | 40-300 |
+| `DockMagnifyCurve` | Dock animation curve | Falloff with distance: `cosine`, `linear` or `exponential`. Default is cosine | Option |
+| `DockMagnifySpacing` | Dock animation spacing (%) | How far neighbours move apart. 0 = no spreading. Default is 50 | 0-100 |
+| `DockMagnifyFollowSpeed` | Dock animation follow speed | How quickly buttons catch up with the cursor; 0 = instant. Default is 60 | 0-60 |
+| `DockMagnifyFocusDuration` | Dock animation fade (ms) | Fade in on enter and out on leave. Default is 150 | 50-1000 |
+| `DockMagnifyBounce` | Dock animation bounce | The button under a resting cursor gently bounces. Default is on | Boolean (true/false) |
+| `DockMagnifyBounceDelay` | Dock animation bounce delay (ms) | Rest time before the bounce starts. Default is 500 | 0-5000 |
+| `DockMagnifyBounceLift` | Dock animation bounce lift | Bounce lifts the button; off = size pulse only. Default is on | Boolean (true/false) |
+| `DockMagnifyLabelsMode` | Dock animation labels mode | For taskbars that show labels. Default is off | Boolean (true/false) |
+| `DockMagnifySystemButtons` | Dock animation system buttons | `all`, `noStart` or `appsOnly`. Default is all | Option |
 */
 // ==/WindhawkModReadme==
 // ==WindhawkModSettings==
@@ -211,6 +234,81 @@ Huge thanks to these awesome developers who made this mod possible -- your contr
 - AlignFlyoutInner: true
   $name: Align flyout windows to the inside of the taskbar
   $description: When enabled, the flyout windows will be aligned within the bounds of the taskbar. When off, they will be 50% inside the taskbar bounds. Default is on.
+- AccentEffects: true
+  $name: Accent effects (twin of Desktop Glass Clock)
+  $description: Master switch for the accent glass, glow, sheen, edge light, running indicators and hover glow. Turn off to get the original TAI look back. Default is on
+- AccentSource: clock
+  $name: Accent source
+  $description: Where the accent color comes from. Desktop Glass Clock shares the color it picks from the wallpaper; without the clock mod, the Windows accent color is used.
+  $options:
+  - clock: Desktop Glass Clock (from wallpaper)
+  - windows: Windows accent color
+  - custom: Custom color
+- CustomAccent: "#F05CD0"
+  $name: Custom accent color
+  $description: Hex color as #RRGGBB, used when Accent source is Custom
+- AccentGlassTint: 38
+  $name: Accent glass tint (%)
+  $description: Tints the glass with the wallpaper-matched dark tint, like the clock panel. 0 = use the normal background tint settings. Default is 38
+- AccentGlow: 30
+  $name: Accent glow (%)
+  $description: Strength of the accent glow rising from the bottom of the dock. 0 = off. Default is 30
+- AccentSheen: true
+  $name: Glass sheen
+  $description: Soft white sheen on the upper half of the dock. Default is on
+- AccentEdgeLight: true
+  $name: Edge light
+  $description: Border that is bright white at the top and fades to the accent color at the bottom. When off, the plain border from the border settings is used. Default is on
+- AccentRunningIndicators: true
+  $name: Accent running indicators
+  $description: Colors the running-app indicators with the accent. Apps asking for attention keep the Windows color. Default is on
+- AccentHoverGlow: true
+  $name: Accent hover glow
+  $description: Accent-tinted background when hovering or pressing a taskbar app. Default is on
+- DockMagnify: true
+  $name: Dock animation
+  $description: macOS-style hover. Buttons near the cursor grow and their neighbours move apart, anchored at the bottom. Replaces the hover square while on. Off when Windows animation effects are off. Default is on
+- DockMagnifyScale: 130
+  $name: Dock animation size (%)
+  $description: Size of the button right under the cursor. 101-220. Default is 130
+- DockMagnifyReach: 100
+  $name: Dock animation reach (px)
+  $description: How far from the cursor buttons still grow. 40-300. Default is 100
+- DockMagnifyCurve: cosine
+  $name: Dock animation curve
+  $description: How the size falls off with distance from the cursor. Default is cosine
+  $options:
+  - cosine: Cosine (smooth)
+  - linear: Linear
+  - exponential: Exponential (sharp peak)
+- DockMagnifySpacing: 50
+  $name: Dock animation spacing (%)
+  $description: How far neighbours move apart to make room for a grown button. 0 = no spreading. Default is 50
+- DockMagnifyFollowSpeed: 60
+  $name: Dock animation follow speed
+  $description: How quickly buttons catch up with the cursor. Higher is snappier, 0 = instant. 0-60. Default is 60
+- DockMagnifyFocusDuration: 150
+  $name: Dock animation fade (ms)
+  $description: Time for the effect to fade in when the cursor enters the dock and out when it leaves. 50-1000. Default is 150
+- DockMagnifyBounce: true
+  $name: Dock animation bounce
+  $description: The button under a resting cursor gently bounces. Default is on
+- DockMagnifyBounceDelay: 500
+  $name: Dock animation bounce delay (ms)
+  $description: How long the cursor must rest before the bounce starts. 0-5000. Default is 500
+- DockMagnifyBounceLift: true
+  $name: Dock animation bounce lift
+  $description: The bounce lifts the button up. When off, the button only pulses in size, from its centre. Default is on
+- DockMagnifyLabelsMode: false
+  $name: Dock animation labels mode
+  $description: Turn on when taskbar labels are shown, so the distance is measured to the whole labelled button and it grows from its icon. Default is off
+- DockMagnifySystemButtons: all
+  $name: Dock animation system buttons
+  $description: Whether Start, Search, Task View and Widgets also animate. Default is all
+  $options:
+  - all: All buttons
+  - noStart: All except Start
+  - appsOnly: App buttons only
 */
 // ==/WindhawkModSettings==
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -376,9 +474,49 @@ struct ModSettings {
   double userDefinedAppsDividerThickness;
   float userDefinedAppsDividerVerticalScale{0.7};
   bool userDefinedDividerLeftAligned=false;
+  // Windows-OCT accent twin
+  bool accentEffects{true};
+  int accentSource{0};  // 0 = Desktop Glass Clock, 1 = Windows accent, 2 = custom
+  unsigned int accentCustomRgb{0xF05CD0};
+  unsigned int accentGlassTint{38};
+  unsigned int accentGlow{30};
+  bool accentSheen{true};
+  bool accentEdgeLight{true};
+  bool accentRunningIndicators{true};
+  bool accentHoverGlow{true};
+  bool dockMagnify{true};
+  unsigned int dockMagnifyScale{130};
+  unsigned int dockMagnifyReach{100};
+  int dockMagnifyCurve{0};  // 0 cosine, 1 linear, 2 exponential
+  unsigned int dockMagnifySpacing{50};
+  unsigned int dockMagnifyFollowSpeed{60};
+  unsigned int dockMagnifyFocusDuration{150};
+  bool dockMagnifyBounce{true};
+  unsigned int dockMagnifyBounceDelay{500};
+  bool dockMagnifyBounceLift{true};
+  bool dockMagnifyLabelsMode{false};
+  int dockMagnifySystemButtons{0};  // 0 all, 1 all but Start, 2 apps only
 };
 ModSettings g_settings;
 std::recursive_mutex g_settingsMutex;
+// ==== Windows-OCT accent twin: palette shared with the Desktop Glass Clock ====
+#include <winrt/Windows.UI.h>
+struct AccentPaletteTai {
+  winrt::Windows::UI::Color accent{255, 240, 92, 208};
+  winrt::Windows::UI::Color accent2{255, 240, 79, 126};
+  winrt::Windows::UI::Color tint{255, 31, 15, 29};
+};
+AccentPaletteTai g_accentPaletteTai;  // guarded by g_settingsMutex
+AccentPaletteTai GetAccentPaletteTai() {
+  std::lock_guard<std::recursive_mutex> lock(g_settingsMutex);
+  return g_accentPaletteTai;
+}
+// True when the master switch and the given effect are on and the mod is not unloading.
+inline bool AccentOn(bool effectEnabled) {
+  return !g_unloading && g_settings.accentEffects && effectEnabled;
+}
+bool DockMagnifyEnabledTai();  // Windows-OCT dock magnify, defined in its block
+// ==== end Windows-OCT accent twin palette ====
 bool GetUserDefinedAlignFlyoutInner() {
   std::lock_guard<std::recursive_mutex> lock(g_settingsMutex);
   return g_settings.userDefinedAlignFlyoutInner;
@@ -5053,8 +5191,15 @@ bool ApplyWindhawkBlurToBackgroundFill(FrameworkElement const& backgroundFillChi
           g_settings.userDefinedTaskbarBackgroundTintColor,
           winrt::Windows::UI::Color{0, 255, 255, 255});
       const float tintOpacity = std::clamp(g_settings.userDefinedTaskbarBackgroundTint / 100.0f, 0.0f, 1.0f);
-      const auto tintAlpha = static_cast<uint8_t>(std::round(tintOpacity * 255.0f));
+      auto tintAlpha = static_cast<uint8_t>(std::round(tintOpacity * 255.0f));
       tintSetting.color.A = tintAlpha;
+      if (AccentOn(g_settings.accentGlassTint > 0)) {
+        // Windows-OCT accent twin: the clock panel's wallpaper-matched dark tint.
+        tintSetting.color = GetAccentPaletteTai().tint;
+        tintSetting.themeResourceKey.clear();
+        tintAlpha = static_cast<uint8_t>(std::round(g_settings.accentGlassTint * 2.55f));
+        tintSetting.color.A = tintAlpha;
+      }
       const float luminosityOpacity = std::clamp(g_settings.userDefinedTaskbarBackgroundLuminosity / 100.0f, 0.0f, 1.0f);
       const float saturation = std::clamp(g_settings.userDefinedTaskbarBackgroundTintSaturation / 100.0f, 0.0f, 5.0f);
       const float inversion = std::clamp(g_settings.userDefinedTaskbarBackgroundInversion / 100.0f, 0.0f, 1.0f);
@@ -6127,14 +6272,311 @@ void ResetBackgroundVisualCache(TaskbarState& state) {
   state.backgroundFillIdentity = 0;
   state.lastBackgroundStyleGeneration = 0;
 }
+// ==== Windows-OCT accent twin ===============================================
+// The Desktop Glass Clock mod publishes its wallpaper palette to
+// HKCU\Software\Windows-OCT (Accent, Accent2, Tint as REG_DWORD 0x00RRGGBB).
+// This block reads it, watches it for changes and styles the dock with it.
+constexpr wchar_t kAccentRegKeyTai[] = L"Software\\Windows-OCT";
+void RgbToHslTai(float r, float g, float b, float& h, float& s, float& l) {
+  const float mx = std::max({r, g, b});
+  const float mn = std::min({r, g, b});
+  l = (mx + mn) * 0.5f;
+  if (mx - mn < 1e-6f) {
+    h = 0.0f;
+    s = 0.0f;
+    return;
+  }
+  const float d = mx - mn;
+  s = l > 0.5f ? d / (2.0f - mx - mn) : d / (mx + mn);
+  if (mx == r) {
+    h = (g - b) / d + (g < b ? 6.0f : 0.0f);
+  } else if (mx == g) {
+    h = (b - r) / d + 2.0f;
+  } else {
+    h = (r - g) / d + 4.0f;
+  }
+  h *= 60.0f;
+}
+float HueToRgbTai(float p, float q, float t) {
+  if (t < 0.0f) t += 1.0f;
+  if (t > 1.0f) t -= 1.0f;
+  if (t < 1.0f / 6.0f) return p + (q - p) * 6.0f * t;
+  if (t < 0.5f) return q;
+  if (t < 2.0f / 3.0f) return p + (q - p) * (2.0f / 3.0f - t) * 6.0f;
+  return p;
+}
+winrt::Windows::UI::Color ToColorTai(float r, float g, float b) {
+  auto toByte = [](float v) {
+    return static_cast<uint8_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f);
+  };
+  return winrt::Windows::UI::Color{255, toByte(r), toByte(g), toByte(b)};
+}
+winrt::Windows::UI::Color HslToColorTai(float h, float s, float l) {
+  h = std::fmod(h, 360.0f);
+  if (h < 0.0f) h += 360.0f;
+  if (s <= 0.0f) return ToColorTai(l, l, l);
+  const float q = l < 0.5f ? l * (1.0f + s) : l + s - l * s;
+  const float p = 2.0f * l - q;
+  const float hk = h / 360.0f;
+  return ToColorTai(HueToRgbTai(p, q, hk + 1.0f / 3.0f), HueToRgbTai(p, q, hk),
+                    HueToRgbTai(p, q, hk - 1.0f / 3.0f));
+}
+// keepExact=false mirrors the clock's SetAccentFromBase(base, false) (Windows accent);
+// keepExact=true mirrors its Custom branch.
+AccentPaletteTai PaletteFromBaseTai(float r, float g, float b, bool keepExact) {
+  float h, s, l;
+  RgbToHslTai(r, g, b, h, s, l);
+  AccentPaletteTai p;
+  if (keepExact) {
+    p.accent = ToColorTai(r, g, b);
+    p.accent2 = HslToColorTai(h + 26.0f, s, std::max(0.35f, l - 0.06f));
+  } else {
+    s = std::clamp(std::max(s, 0.75f), 0.0f, 0.95f);
+    p.accent = HslToColorTai(h, s, 0.64f);
+    p.accent2 = HslToColorTai(h + 28.0f, s, 0.58f);
+  }
+  p.tint = HslToColorTai(h, std::min(s, 0.55f) * 0.9f, 0.10f);
+  return p;
+}
+winrt::Windows::UI::Color ColorFromRgbDwordTai(DWORD v) {
+  return winrt::Windows::UI::Color{255, static_cast<uint8_t>((v >> 16) & 0xFF),
+                                   static_cast<uint8_t>((v >> 8) & 0xFF),
+                                   static_cast<uint8_t>(v & 0xFF)};
+}
+bool ReadClockPaletteTai(AccentPaletteTai* out) {
+  DWORD values[3] = {};
+  const wchar_t* names[3] = {L"Accent", L"Accent2", L"Tint"};
+  for (int i = 0; i < 3; ++i) {
+    DWORD size = sizeof(DWORD);
+    if (RegGetValueW(HKEY_CURRENT_USER, kAccentRegKeyTai, names[i], RRF_RT_REG_DWORD,
+                     nullptr, &values[i], &size) != ERROR_SUCCESS) {
+      return false;
+    }
+  }
+  out->accent = ColorFromRgbDwordTai(values[0]);
+  out->accent2 = ColorFromRgbDwordTai(values[1]);
+  out->tint = ColorFromRgbDwordTai(values[2]);
+  return true;
+}
+bool WindowsAccentPaletteTai(AccentPaletteTai* out) {
+  DWORD argb = 0;
+  BOOL opaque = FALSE;
+  if (FAILED(DwmGetColorizationColor(&argb, &opaque))) {
+    return false;
+  }
+  *out = PaletteFromBaseTai(((argb >> 16) & 0xFF) / 255.0f, ((argb >> 8) & 0xFF) / 255.0f,
+                            (argb & 0xFF) / 255.0f, false);
+  return true;
+}
+void LoadAccentPaletteTai() {
+  std::lock_guard<std::recursive_mutex> lock(g_settingsMutex);
+  AccentPaletteTai palette;
+  bool ok = false;
+  if (g_settings.accentSource == 2) {
+    const unsigned int rgb = g_settings.accentCustomRgb;
+    palette = PaletteFromBaseTai(((rgb >> 16) & 0xFF) / 255.0f, ((rgb >> 8) & 0xFF) / 255.0f,
+                                 (rgb & 0xFF) / 255.0f, true);
+    ok = true;
+  } else if (g_settings.accentSource == 0) {
+    ok = ReadClockPaletteTai(&palette);
+  }
+  if (!ok) {
+    ok = WindowsAccentPaletteTai(&palette);
+  }
+  if (ok) {
+    g_accentPaletteTai = palette;
+  }
+}
+HKEY g_accentKeyTai = nullptr;
+HANDLE g_accentEventTai = nullptr;
+HANDLE g_accentWaitTai = nullptr;
+bool ArmAccentNotifyTai() {
+  return g_accentKeyTai && g_accentEventTai &&
+         RegNotifyChangeKeyValue(g_accentKeyTai, FALSE,
+                                 REG_NOTIFY_CHANGE_LAST_SET | REG_NOTIFY_THREAD_AGNOSTIC,
+                                 g_accentEventTai, TRUE) == ERROR_SUCCESS;
+}
+void CALLBACK OnAccentChangedTai(PVOID, BOOLEAN) {
+  if (g_unloading) {
+    return;
+  }
+  ArmAccentNotifyTai();
+  LoadAccentPaletteTai();
+  // The clock writes three values in a row; the debounce applies them together.
+  RequestTaskbarChildStyleRefresh();
+  ApplySettingsDebounced(150);
+}
+void StopAccentWatcherTai() {
+  if (g_accentWaitTai) {
+    UnregisterWaitEx(g_accentWaitTai, INVALID_HANDLE_VALUE);
+    g_accentWaitTai = nullptr;
+  }
+  if (g_accentEventTai) {
+    CloseHandle(g_accentEventTai);
+    g_accentEventTai = nullptr;
+  }
+  if (g_accentKeyTai) {
+    RegCloseKey(g_accentKeyTai);
+    g_accentKeyTai = nullptr;
+  }
+}
+void StartAccentWatcherTai() {
+  StopAccentWatcherTai();
+  if (RegCreateKeyExW(HKEY_CURRENT_USER, kAccentRegKeyTai, 0, nullptr, 0,
+                      KEY_NOTIFY | KEY_QUERY_VALUE, nullptr, &g_accentKeyTai,
+                      nullptr) != ERROR_SUCCESS) {
+    g_accentKeyTai = nullptr;
+    Wh_Log(L"Accent twin: cannot open registry key; palette updates need a settings change");
+    return;
+  }
+  g_accentEventTai = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  if (!ArmAccentNotifyTai() ||
+      !RegisterWaitForSingleObject(&g_accentWaitTai, g_accentEventTai, OnAccentChangedTai,
+                                   nullptr, INFINITE, WT_EXECUTEINWAITTHREAD)) {
+    g_accentWaitTai = nullptr;
+    Wh_Log(L"Accent twin: registry watcher failed: %lu", GetLastError());
+    StopAccentWatcherTai();
+  }
+}
+// ==== end Windows-OCT accent twin (palette + watcher) =======================
 struct TaskbarBackgroundCompositionResourcesTai {
   winrt::Windows::UI::Composition::CompositionRoundedRectangleGeometry clipGeometry{nullptr};
   winrt::Windows::UI::Composition::CompositionGeometricClip clip{nullptr};
   winrt::Windows::UI::Composition::ShapeVisual borderVisual{nullptr};
   winrt::Windows::UI::Composition::CompositionRoundedRectangleGeometry borderGeometry{nullptr};
   winrt::Windows::UI::Composition::CompositionSpriteShape borderShape{nullptr};
-  winrt::Windows::UI::Composition::CompositionColorBrush borderBrush{nullptr};
+  // Windows-OCT accent twin: the border stroke is a 3-stop vertical gradient
+  // (edge light), and glow + sheen are sprite children of borderVisual, so they
+  // share its clip, offset and width animation.
+  winrt::Windows::UI::Composition::CompositionLinearGradientBrush borderBrush{nullptr};
+  winrt::Windows::UI::Composition::CompositionColorGradientStop edgeTop{nullptr};
+  winrt::Windows::UI::Composition::CompositionColorGradientStop edgeMid{nullptr};
+  winrt::Windows::UI::Composition::CompositionColorGradientStop edgeBottom{nullptr};
+  winrt::Windows::UI::Composition::SpriteVisual glowVisual{nullptr};
+  winrt::Windows::UI::Composition::CompositionColorGradientStop glowCenter{nullptr};
+  winrt::Windows::UI::Composition::CompositionColorGradientStop glowEdge{nullptr};
+  winrt::Windows::UI::Composition::SpriteVisual sheenVisual{nullptr};
 };
+constexpr wchar_t kAccentGlowCommentTai[] = L"WinOctGlow";
+constexpr wchar_t kAccentSheenCommentTai[] = L"WinOctSheen";
+winrt::Windows::UI::Composition::CompositionColorGradientStop GradientStopAtTai(
+    winrt::Windows::UI::Composition::CompositionGradientBrush const& brush,
+    uint32_t index) {
+  if (!brush || brush.ColorStops().Size() <= index) {
+    return nullptr;
+  }
+  return brush.ColorStops().GetAt(index);
+}
+// Finds the glow and sheen sprites by their Comment. Returns false if either is missing.
+bool FindAccentLayersTai(
+    winrt::Windows::UI::Composition::ShapeVisual const& borderVisual,
+    TaskbarBackgroundCompositionResourcesTai* resources) {
+  winrt::Windows::UI::Composition::SpriteVisual glow{nullptr};
+  winrt::Windows::UI::Composition::SpriteVisual sheen{nullptr};
+  for (auto const& child : borderVisual.Children()) {
+    auto sprite = child.try_as<winrt::Windows::UI::Composition::SpriteVisual>();
+    if (!sprite) continue;
+    const auto comment = sprite.Comment();
+    if (comment == kAccentGlowCommentTai) glow = sprite;
+    if (comment == kAccentSheenCommentTai) sheen = sprite;
+  }
+  auto glowBrush = glow ? glow.Brush().try_as<winrt::Windows::UI::Composition::CompositionRadialGradientBrush>() : nullptr;
+  auto glowCenter = GradientStopAtTai(glowBrush, 0);
+  auto glowEdge = GradientStopAtTai(glowBrush, 1);
+  if (!glow || !sheen || !glowCenter || !glowEdge) {
+    return false;
+  }
+  resources->glowVisual = glow;
+  resources->glowCenter = glowCenter;
+  resources->glowEdge = glowEdge;
+  resources->sheenVisual = sheen;
+  return true;
+}
+winrt::Windows::UI::Composition::CompositionColorGradientStop AddGradientStopTai(
+    winrt::Windows::UI::Composition::Compositor const& compositor,
+    winrt::Windows::UI::Composition::CompositionGradientBrush const& brush,
+    float offset,
+    winrt::Windows::UI::Color color) {
+  auto stop = compositor.CreateColorGradientStop(offset, color);
+  brush.ColorStops().Append(stop);
+  return stop;
+}
+void CreateAccentLayersTai(
+    winrt::Windows::UI::Composition::Compositor const& compositor,
+    TaskbarBackgroundCompositionResourcesTai* resources) {
+  try {
+  // Glow: the clock's "accent glow rising from the bottom", an ellipse centred
+  // on the bottom edge. Colors are set later by StyleTaiAccentLayers.
+  auto glowBrush = compositor.CreateRadialGradientBrush();
+  glowBrush.EllipseCenter({0.5f, 1.0f});
+  glowBrush.EllipseRadius({0.5f, 0.95f});
+  resources->glowCenter = AddGradientStopTai(compositor, glowBrush, 0.0f, {0, 0, 0, 0});
+  resources->glowEdge = AddGradientStopTai(compositor, glowBrush, 1.0f, {0, 0, 0, 0});
+  resources->glowVisual = compositor.CreateSpriteVisual();
+  resources->glowVisual.Comment(kAccentGlowCommentTai);
+  resources->glowVisual.RelativeSizeAdjustment({1.0f, 1.0f});
+  resources->glowVisual.Brush(glowBrush);
+  // Sheen: white on the upper half, same stops as the clock panel.
+  auto sheenBrush = compositor.CreateLinearGradientBrush();
+  sheenBrush.StartPoint({0.0f, 0.0f});
+  sheenBrush.EndPoint({0.0f, 1.0f});
+  AddGradientStopTai(compositor, sheenBrush, 0.0f, {44, 255, 255, 255});
+  AddGradientStopTai(compositor, sheenBrush, 0.45f, {10, 255, 255, 255});
+  AddGradientStopTai(compositor, sheenBrush, 1.0f, {0, 255, 255, 255});
+  resources->sheenVisual = compositor.CreateSpriteVisual();
+  resources->sheenVisual.Comment(kAccentSheenCommentTai);
+  resources->sheenVisual.RelativeSizeAdjustment({1.0f, 1.0f});
+  resources->sheenVisual.Brush(sheenBrush);
+  resources->borderVisual.Children().InsertAtTop(resources->glowVisual);
+  resources->borderVisual.Children().InsertAtTop(resources->sheenVisual);
+  } catch (...) {
+    Wh_Log(L"Accent twin: glow/sheen layers unavailable %08X", winrt::to_hresult());
+    resources->glowVisual = nullptr;
+    resources->glowCenter = nullptr;
+    resources->glowEdge = nullptr;
+    resources->sheenVisual = nullptr;
+  }
+}
+// Applies the palette and toggles to the edge light, glow and sheen.
+void StyleTaiAccentLayers(TaskbarBackgroundCompositionResourcesTai& r) {
+  try {
+    const winrt::Windows::UI::Color legacy{
+        g_settings.userDefinedTaskbarBorderOpacity,
+        static_cast<uint8_t>(g_settings.borderColorR),
+        static_cast<uint8_t>(g_settings.borderColorG),
+        static_cast<uint8_t>(g_settings.borderColorB)};
+    const auto palette = GetAccentPaletteTai();
+    auto withAlpha = [](winrt::Windows::UI::Color c, uint8_t a) {
+      c.A = a;
+      return c;
+    };
+    if (AccentOn(g_settings.accentEdgeLight)) {
+      r.edgeTop.Color({110, 255, 255, 255});
+      r.edgeMid.Color({26, 255, 255, 255});
+      r.edgeBottom.Color(withAlpha(palette.accent, 90));
+    } else {
+      // Identical to the original flat CompositionColorBrush border.
+      r.edgeTop.Color(legacy);
+      r.edgeMid.Color(legacy);
+      r.edgeBottom.Color(legacy);
+    }
+    if (r.glowVisual && r.glowCenter && r.glowEdge) {
+      const bool glow = AccentOn(g_settings.accentGlow > 0);
+      r.glowVisual.IsVisible(glow);
+      r.glowCenter.Color(withAlpha(
+          palette.accent,
+          glow ? static_cast<uint8_t>(std::round(g_settings.accentGlow * 2.55f)) : 0));
+      r.glowEdge.Color(withAlpha(palette.accent, 0));
+    }
+    if (r.sheenVisual) {
+      r.sheenVisual.IsVisible(AccentOn(g_settings.accentSheen));
+    }
+  } catch (winrt::hresult_error const& ex) {
+    Wh_Log(L"Accent twin: styling layers failed %08X", ex.code());
+  } catch (...) {
+    Wh_Log(L"Accent twin: styling layers failed");
+  }
+}
 bool TryGetTaskbarBackgroundCompositionResourcesTai(
     FrameworkElement const& backgroundFillChild,
     winrt::Windows::UI::Composition::Visual const& backgroundFillVisual,
@@ -6165,17 +6607,28 @@ bool TryGetTaskbarBackgroundCompositionResourcesTai(
         : nullptr;
     auto borderBrush = borderShape
         ? borderShape.StrokeBrush().try_as<
-              winrt::Windows::UI::Composition::CompositionColorBrush>()
+              winrt::Windows::UI::Composition::CompositionLinearGradientBrush>()
         : nullptr;
-    if (!borderShape || !borderGeometry || !borderBrush) {
+    // A visual from an older build (flat color brush, no accent layers) fails
+    // here, so the caller recreates everything.
+    auto edgeTop = GradientStopAtTai(borderBrush, 0);
+    auto edgeMid = GradientStopAtTai(borderBrush, 1);
+    auto edgeBottom = GradientStopAtTai(borderBrush, 2);
+    if (!borderShape || !borderGeometry || !borderBrush || !edgeTop || !edgeMid ||
+        !edgeBottom) {
       return false;
     }
+    // Optional: if the glow/sheen sprites could not be created, the dock still works.
+    FindAccentLayersTai(borderVisual, resources);
     resources->clipGeometry = clipGeometry;
     resources->clip = clip;
     resources->borderVisual = borderVisual;
     resources->borderGeometry = borderGeometry;
     resources->borderShape = borderShape;
     resources->borderBrush = borderBrush;
+    resources->edgeTop = edgeTop;
+    resources->edgeMid = edgeMid;
+    resources->edgeBottom = edgeBottom;
     return true;
   } catch (...) {
     return false;
@@ -6197,10 +6650,16 @@ bool CreateTaskbarBackgroundCompositionResourcesTai(
     resources->borderGeometry = compositor.CreateRoundedRectangleGeometry();
     resources->borderShape =
         compositor.CreateSpriteShape(resources->borderGeometry);
-    resources->borderBrush = compositor.CreateColorBrush();
+    resources->borderBrush = compositor.CreateLinearGradientBrush();
+    resources->borderBrush.StartPoint({0.0f, 0.0f});
+    resources->borderBrush.EndPoint({0.0f, 1.0f});
+    resources->edgeTop = AddGradientStopTai(compositor, resources->borderBrush, 0.0f, {0, 0, 0, 0});
+    resources->edgeMid = AddGradientStopTai(compositor, resources->borderBrush, 0.55f, {0, 0, 0, 0});
+    resources->edgeBottom = AddGradientStopTai(compositor, resources->borderBrush, 1.0f, {0, 0, 0, 0});
     resources->borderShape.StrokeBrush(resources->borderBrush);
     resources->borderShape.FillBrush(nullptr);
     resources->borderVisual.Shapes().Append(resources->borderShape);
+    CreateAccentLayersTai(compositor, resources);
     backgroundFillVisual.Clip(resources->clip);
     winrt::Windows::UI::Xaml::Hosting::ElementCompositionPreview::
         SetElementChildVisual(backgroundFillChild, resources->borderVisual);
@@ -7172,6 +7631,676 @@ bool ApplyTaskbarButtonSizing(
   }
   return layoutChanged;
 }
+// ==== Windows-OCT accent twin: running indicators and hover glow ===========
+// Colors are applied as Setters appended to the native template's visual
+// states (the mechanism Windows 11 Taskbar Styler uses for Fill@State), so the
+// taskbar's own state changes keep them. Our setters are marked by a brush
+// opacity of 0.999 so they can be updated or removed later.
+constexpr double kAccentMarkerOpacityTai = 0.999;
+bool IsSameObjectTai(winrt::Windows::Foundation::IInspectable const& a,
+                     winrt::Windows::Foundation::IInspectable const& b) {
+  if (!a || !b) return false;
+  return winrt::get_abi(a.as<winrt::Windows::Foundation::IUnknown>()) ==
+         winrt::get_abi(b.as<winrt::Windows::Foundation::IUnknown>());
+}
+void LogAccentOnceTai(std::wstring const& key, PCWSTR message) {
+  static std::mutex mutex;
+  static std::vector<std::wstring> logged;
+  std::lock_guard<std::mutex> lock(mutex);
+  if (std::find(logged.begin(), logged.end(), key) != logged.end()) return;
+  logged.push_back(key);
+  Wh_Log(L"Accent twin: %s %s", message, key.c_str());
+}
+// Walks from element up its ancestors (stopping after stopAt) and returns the
+// visual state named stateName, with its group.
+VisualState FindVisualStateTai(FrameworkElement element,
+                               FrameworkElement const& stopAt,
+                               std::wstring_view stateName,
+                               VisualStateGroup* groupOut) {
+  for (int depth = 0; element && depth < 8; ++depth) {
+    auto groups = VisualStateManager::GetVisualStateGroups(element);
+    if (groups) {
+      for (auto const& group : groups) {
+        for (auto const& state : group.States()) {
+          if (std::wstring_view(state.Name()) == stateName) {
+            if (groupOut) *groupOut = group;
+            return state;
+          }
+        }
+      }
+    }
+    if (IsSameObjectTai(element, stopAt)) break;
+    element = Media::VisualTreeHelper::GetParent(element).try_as<FrameworkElement>();
+  }
+  return nullptr;
+}
+// enable: add our marked setter (or update its color). !enable: remove it.
+// Returns our brush when enabled, so the caller can mirror the current state.
+Media::SolidColorBrush UpsertAccentSetterTai(VisualState const& state,
+                                             DependencyObject const& target,
+                                             PCWSTR propertyName,
+                                             winrt::Windows::UI::Color color,
+                                             bool enable) {
+  if (!state || !target) return nullptr;
+  try {
+  auto setters = state.Setters();
+  for (uint32_t i = 0; i < setters.Size(); ++i) {
+    auto setter = setters.GetAt(i).try_as<Setter>();
+    if (!setter) continue;
+    auto brush = setter.Value().try_as<Media::SolidColorBrush>();
+    if (!brush || std::abs(brush.Opacity() - kAccentMarkerOpacityTai) > 1e-6) continue;
+    auto path = setter.Target();
+    if (!path || !IsSameObjectTai(path.Target(), target)) continue;
+    if (!enable) {
+      setters.RemoveAt(i);
+      return nullptr;
+    }
+    brush.Color(color);
+    return brush;
+  }
+  if (!enable) return nullptr;
+  Media::SolidColorBrush brush;
+  brush.Color(color);
+  brush.Opacity(kAccentMarkerOpacityTai);
+  TargetPropertyPath path;
+  path.Path(PropertyPath(propertyName));
+  path.Target(target);
+  Setter setter;
+  setter.Target(path);
+  setter.Value(brush);
+  setters.Append(setter);
+  return brush;
+  } catch (...) {
+    // e.g. a sealed setter collection: skip this state, keep the others.
+    LogAccentOnceTai(std::wstring(state.Name()), L"cannot change setters of state");
+    return nullptr;
+  }
+}
+bool IsAccentMarkerBrushTai(winrt::Windows::Foundation::IInspectable const& value) {
+  auto brush = value.try_as<Media::SolidColorBrush>();
+  return brush && std::abs(brush.Opacity() - kAccentMarkerOpacityTai) <= 1e-6;
+}
+struct AccentStateColorTai {
+  PCWSTR stateName;
+  uint8_t alpha;
+};
+void ApplyAccentButtonStatesTai(FrameworkElement const& button,
+                                FrameworkElement const& iconPanel) {
+  if (!button || !iconPanel) return;
+  try {
+    const auto palette = GetAccentPaletteTai();
+    auto accentWithAlpha = [&palette](uint8_t alpha) {
+      auto c = palette.accent;
+      c.A = alpha;
+      return c;
+    };
+    // Running indicator: accent when active, softer when inactive. The
+    // RequestingAttention state is left alone so flashing apps keep the
+    // Windows attention color.
+    if (auto indicator = FindChildByName(iconPanel, L"RunningIndicator")) {
+      const bool on = AccentOn(g_settings.accentRunningIndicators);
+      const AccentStateColorTai states[] = {{L"ActiveRunningIndicator", 255},
+                                            {L"InactiveRunningIndicator", 153}};
+      Media::SolidColorBrush currentBrush{nullptr};
+      for (auto const& entry : states) {
+        VisualStateGroup group{nullptr};
+        auto state = FindVisualStateTai(indicator, button, entry.stateName, &group);
+        if (!state) {
+          LogAccentOnceTai(entry.stateName, L"visual state not found:");
+          continue;
+        }
+        auto brush = UpsertAccentSetterTai(state, indicator, L"Fill",
+                                           accentWithAlpha(entry.alpha), on);
+        if (brush && group && IsSameObjectTai(group.CurrentState(), state)) {
+          currentBrush = brush;
+        }
+      }
+      // Setters apply on the next state change; mirror the current state now.
+      if (auto shape = indicator.try_as<winrt::Windows::UI::Xaml::Shapes::Shape>()) {
+        const auto fillProperty = winrt::Windows::UI::Xaml::Shapes::Shape::FillProperty();
+        if (currentBrush) {
+          shape.Fill(currentBrush);
+        } else if (IsAccentMarkerBrushTai(shape.ReadLocalValue(fillProperty))) {
+          // Only remove a local value we set; never touch a native one.
+          shape.ClearValue(fillProperty);
+        }
+      }
+    }
+    // Hover and press: accent-tinted button background.
+    auto background = FindChildByName(iconPanel, L"BackgroundElement");
+    if (!background) {
+      if (auto parent = Media::VisualTreeHelper::GetParent(iconPanel).try_as<FrameworkElement>()) {
+        background = FindChildByName(parent, L"BackgroundElement");
+      }
+    }
+    if (background) {
+      // Dock magnification replaces the hover/press square: our marked
+      // setters go fully transparent, which also hides the native square.
+      const bool magnify = DockMagnifyEnabledTai();
+      const bool on = magnify || AccentOn(g_settings.accentHoverGlow);
+      const uint8_t hoverAlpha = magnify ? 0 : 41;
+      const uint8_t pressAlpha = magnify ? 0 : 26;
+      const AccentStateColorTai states[] = {{L"InactivePointerOver", hoverAlpha},
+                                            {L"ActivePointerOver", hoverAlpha},
+                                            {L"InactivePressed", pressAlpha},
+                                            {L"ActivePressed", pressAlpha}};
+      for (auto const& entry : states) {
+        auto state = FindVisualStateTai(background, button, entry.stateName, nullptr);
+        if (!state) {
+          LogAccentOnceTai(entry.stateName, L"visual state not found:");
+          continue;
+        }
+        UpsertAccentSetterTai(state, background, L"Background",
+                              accentWithAlpha(entry.alpha), on);
+      }
+    }
+  } catch (winrt::hresult_error const& ex) {
+    Wh_Log(L"Accent twin: button states failed %08X: %s", ex.code(), ex.message().c_str());
+  } catch (...) {
+    Wh_Log(L"Accent twin: button states failed %08X", winrt::to_hresult());
+  }
+}
+// ==== end Windows-OCT accent twin (button states) ===========================
+// ==== Windows-OCT dock magnify math (pure) ====
+// Dock motion modelled on the Taskbar Dock Animation mod: curve falloff,
+// symmetric neighbour spread, exponential follow, a focus ramp and an idle
+// bounce. Re-implemented for TAI; no WinRT here so tests can compile it alone.
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+constexpr double kDockPiTai = 3.14159265358979323846;
+constexpr double kDockMaxDtSecTai = 0.1;
+constexpr double kDockBouncePeriodMsTai = 1200.0;
+constexpr double kDockBounceScaleTai = 0.05;
+constexpr double kDockBounceLiftPxTai = -4.0;
+// t = distance / reach in [0, 1]. curve: 0 cosine, 1 linear, 2 exponential.
+inline double DockCurveFactorTai(double t, int curve) {
+  t = std::clamp(t, 0.0, 1.0);
+  switch (curve) {
+    case 1:
+      return 1.0 - t;
+    case 2:
+      return std::pow(1.0 - t, 3.0);
+    default:
+      return (std::cos(kDockPiTai * t) + 1.0) * 0.5;
+  }
+}
+inline double DockScaleAtTai(double distance, double reach, double maxScale, int curve) {
+  if (!(reach > 0.0)) return 1.0;
+  const double d = std::fabs(distance);
+  if (d >= reach) return 1.0;
+  return 1.0 + (std::max(maxScale, 1.0) - 1.0) * DockCurveFactorTai(d / reach, curve);
+}
+// Labels mode: distance from x to the span [start, end], 0 inside it.
+inline double DockSpanDistanceTai(double x, double start, double end) {
+  if (x < start) return start - x;
+  if (x > end) return x - end;
+  return 0.0;
+}
+// Each button grows by (scale-1)*width*spacing; shifts keep the row centred,
+// so neighbours move apart symmetrically around the magnified button.
+inline void DockSpreadShiftsTai(const double* scales, const double* widths, std::size_t n,
+                                double spacing, double* shifts) {
+  double total = 0.0;
+  for (std::size_t i = 0; i < n; ++i) total += (scales[i] - 1.0) * widths[i] * spacing;
+  double cumulative = 0.0;
+  for (std::size_t i = 0; i < n; ++i) {
+    const double extra = (scales[i] - 1.0) * widths[i] * spacing;
+    shifts[i] = cumulative + extra / 2.0 - total / 2.0;
+    cumulative += extra;
+  }
+}
+// Exponential follow factor per frame. speed 0 = jump straight to the target.
+inline double DockFollowAlphaTai(double speed, double dtSec) {
+  if (!(speed > 0.0)) return 1.0;
+  const double dt = std::clamp(dtSec, 0.0, kDockMaxDtSecTai);
+  return 1.0 - std::exp(-speed * dt);
+}
+// Linear ramp of the focus intensity over durationMs, in and out.
+inline double DockFocusStepTai(double current, bool inside, double dtMs, double durationMs) {
+  const double dt = std::clamp(dtMs, 0.0, kDockMaxDtSecTai * 1000.0);
+  const double step = durationMs > 0.0 ? dt / durationMs : 1.0;
+  return std::clamp(inside ? current + step : current - step, 0.0, 1.0);
+}
+// Repeating half sine, 0 -> 1 -> 0 every 1.2 s.
+inline double DockBounceWaveTai(double elapsedMs) {
+  const double t = std::fmod(std::max(elapsedMs, 0.0), kDockBouncePeriodMsTai) / kDockBouncePeriodMsTai;
+  return std::sin(kDockPiTai * t);
+}
+// ==== end Windows-OCT dock magnify math ====
+// ==== Windows-OCT dock magnify ====
+#include <winrt/Windows.UI.Input.h>
+#include <winrt/Windows.UI.Xaml.Automation.h>
+#include <winrt/Windows.UI.Xaml.Input.h>
+// Off when the setting, the accent master switch or Windows animation effects
+// are off, and while the mod unloads.
+bool DockMagnifyEnabledTai() {
+  BOOL animations = TRUE;
+  SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
+  return AccentOn(g_settings.dockMagnify) && animations;
+}
+// One frame's copy of the settings, taken under the settings lock.
+struct DockMagnifyParamsTai {
+  double maxScale{1.3};
+  double reach{100.0};
+  int curve{0};
+  double spacing{0.5};
+  double followSpeed{60.0};
+  double focusMs{150.0};
+  bool bounce{true};
+  double bounceDelayMs{500.0};
+  bool bounceLift{true};
+  bool labelsMode{false};
+  int systemButtons{0};  // 0 all, 1 all but Start, 2 apps only
+};
+DockMagnifyParamsTai GetDockMagnifyParamsTai() {
+  std::lock_guard<std::recursive_mutex> lock(g_settingsMutex);
+  DockMagnifyParamsTai p;
+  p.maxScale = g_settings.dockMagnifyScale / 100.0;
+  p.reach = static_cast<double>(g_settings.dockMagnifyReach);
+  p.curve = g_settings.dockMagnifyCurve;
+  p.spacing = g_settings.dockMagnifySpacing / 100.0;
+  p.followSpeed = static_cast<double>(g_settings.dockMagnifyFollowSpeed);
+  p.focusMs = static_cast<double>(g_settings.dockMagnifyFocusDuration);
+  p.bounce = g_settings.dockMagnifyBounce;
+  p.bounceDelayMs = static_cast<double>(g_settings.dockMagnifyBounceDelay);
+  p.bounceLift = g_settings.dockMagnifyBounceLift;
+  p.labelsMode = g_settings.dockMagnifyLabelsMode;
+  p.systemButtons = g_settings.dockMagnifySystemButtons;
+  return p;
+}
+// All state below is touched only on the taskbar UI thread.
+struct DockMagnifyButtonTai {
+  winrt::weak_ref<FrameworkElement> slot;    // TaskbarFrameRepeater child: geometry
+  winrt::weak_ref<FrameworkElement> target;  // template root inside the slot: carries the transforms
+  Media::ScaleTransform waveScale{nullptr};
+  Media::TranslateTransform waveShift{nullptr};
+  Media::ScaleTransform bounceScale{nullptr};
+  Media::TranslateTransform bounceLift{nullptr};
+  double scale{1.0};
+  double shift{0.0};
+  float originX{-1.0f};
+  float originY{-1.0f};
+};
+struct DockMagnifyContextTai {
+  winrt::weak_ref<FrameworkElement> frame;
+  winrt::weak_ref<FrameworkElement> repeater;
+  // Boxed handlers: the same objects are passed to AddHandler and RemoveHandler.
+  winrt::Windows::Foundation::IInspectable movedHandler{nullptr};
+  winrt::Windows::Foundation::IInspectable exitedHandler{nullptr};
+  bool inside{false};
+  double pointerX{0.0};
+  double lastMoveX{-1.0};
+  std::chrono::steady_clock::time_point lastMoveTime{};
+  bool bouncing{false};
+  std::chrono::steady_clock::time_point bounceStart{};
+  double bounceStrength{0.0};
+  double intensity{0.0};
+  uint64_t signature{0};
+  std::vector<DockMagnifyButtonTai> buttons;
+  int moveEvents{0};  // [DOCK-DIAG]
+};
+std::vector<DockMagnifyContextTai> g_dockMagnifyContextsTai;
+winrt::event_token g_dockMagnifyRenderTokenTai{};
+bool g_dockMagnifyRenderingTai{false};
+std::chrono::steady_clock::time_point g_dockMagnifyLastFrameTai{};
+DockMagnifyContextTai* FindDockMagnifyContextTai(winrt::Windows::Foundation::IInspectable const& frame) {
+  for (auto& ctx : g_dockMagnifyContextsTai) {
+    if (IsSameObjectTai(ctx.frame.get(), frame)) return &ctx;
+  }
+  return nullptr;
+}
+FrameworkElement FindDockTaskListButtonTai(FrameworkElement const& root, int depth) {
+  if (!root || depth > 6) return nullptr;
+  if (winrt::get_class_name(root) == L"Taskbar.TaskListButton") return root;
+  const int n = Media::VisualTreeHelper::GetChildrenCount(root);
+  for (int i = 0; i < n; ++i) {
+    auto child = Media::VisualTreeHelper::GetChild(root, i).try_as<FrameworkElement>();
+    if (auto found = FindDockTaskListButtonTai(child, depth + 1)) return found;
+  }
+  return nullptr;
+}
+// First element in the subtree that carries an automation id or name.
+FrameworkElement FindDockClassifierNodeTai(FrameworkElement const& root, int depth) {
+  if (!root || depth > 6) return nullptr;
+  if (!winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetAutomationId(root).empty() ||
+      !winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetName(root).empty()) {
+    return root;
+  }
+  const int n = Media::VisualTreeHelper::GetChildrenCount(root);
+  for (int i = 0; i < n; ++i) {
+    auto child = Media::VisualTreeHelper::GetChild(root, i).try_as<FrameworkElement>();
+    if (auto found = FindDockClassifierNodeTai(child, depth + 1)) return found;
+  }
+  return nullptr;
+}
+bool IsDockStartButtonTai(FrameworkElement const& slot) {
+  std::wstring text;
+  for (auto const& e : {slot, FindDockClassifierNodeTai(slot, 0)}) {
+    if (!e) continue;
+    text += winrt::get_class_name(e).c_str();
+    text += L"|";
+    text += winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetAutomationId(e).c_str();
+    text += L"|";
+    text += e.Name().c_str();
+    text += L"|";
+  }
+  std::transform(text.begin(), text.end(), text.begin(), ::towlower);
+  return text.find(L"startbutton") != std::wstring::npos;
+}
+void WriteDockTransformTai(DockMagnifyButtonTai& b, double scale, double shift,
+                           double bounceScale, double lift) {
+  if (b.waveScale && std::fabs(b.waveScale.ScaleX() - scale) > 1e-5) {
+    b.waveScale.ScaleX(scale);
+    b.waveScale.ScaleY(scale);
+  }
+  if (b.waveShift && std::fabs(b.waveShift.X() - shift) > 1e-4) b.waveShift.X(shift);
+  if (b.bounceScale && std::fabs(b.bounceScale.ScaleX() - bounceScale) > 1e-5) {
+    b.bounceScale.ScaleX(bounceScale);
+    b.bounceScale.ScaleY(bounceScale);
+  }
+  if (b.bounceLift && std::fabs(b.bounceLift.Y() - lift) > 1e-4) b.bounceLift.Y(lift);
+}
+void ResetDockButtonTai(DockMagnifyButtonTai& b) {
+  b.scale = 1.0;
+  b.shift = 0.0;
+  try {
+    WriteDockTransformTai(b, 1.0, 0.0, 1.0, 0.0);
+  } catch (...) {
+  }
+}
+// Installs Scale, Translate (spread), Scale, Translate (bounce) on the target.
+bool InstallDockTransformTai(DockMagnifyButtonTai& b, FrameworkElement const& target) {
+  auto group = target.RenderTransform().try_as<Media::TransformGroup>();
+  auto childAt = [&](uint32_t i) {
+    return group && group.Children().Size() > i ? group.Children().GetAt(i) : nullptr;
+  };
+  if (!group || group.Children().Size() < 4 || !childAt(0).try_as<Media::ScaleTransform>() ||
+      !childAt(1).try_as<Media::TranslateTransform>() ||
+      !childAt(2).try_as<Media::ScaleTransform>() ||
+      !childAt(3).try_as<Media::TranslateTransform>()) {
+    group = Media::TransformGroup();
+    group.Children().Append(Media::ScaleTransform());
+    group.Children().Append(Media::TranslateTransform());
+    group.Children().Append(Media::ScaleTransform());
+    group.Children().Append(Media::TranslateTransform());
+    target.RenderTransform(group);
+  }
+  b.waveScale = childAt(0).try_as<Media::ScaleTransform>();
+  b.waveShift = childAt(1).try_as<Media::TranslateTransform>();
+  b.bounceScale = childAt(2).try_as<Media::ScaleTransform>();
+  b.bounceLift = childAt(3).try_as<Media::TranslateTransform>();
+  return b.waveScale && b.waveShift && b.bounceScale && b.bounceLift;
+}
+// Rebuilds the button list when the repeater's children or the button-related
+// settings change, keeping the motion state of buttons that are still there.
+void RefreshDockButtonsTai(DockMagnifyContextTai& ctx, FrameworkElement const& repeater,
+                           DockMagnifyParamsTai const& p) {
+  const int count = Media::VisualTreeHelper::GetChildrenCount(repeater);
+  uint64_t sig = 1469598103934665603ULL;
+  auto mix = [&](uint64_t v) {
+    sig ^= v;
+    sig *= 1099511628211ULL;
+  };
+  mix(static_cast<uint64_t>(count));
+  mix(static_cast<uint64_t>(p.systemButtons));
+  for (int i = 0; i < count; ++i) {
+    mix(reinterpret_cast<uint64_t>(winrt::get_abi(Media::VisualTreeHelper::GetChild(repeater, i))));
+  }
+  if (sig == ctx.signature) return;
+  std::vector<DockMagnifyButtonTai> next;
+  int pending = 0;
+  for (int i = 0; i < count; ++i) {
+    auto slot = Media::VisualTreeHelper::GetChild(repeater, i).try_as<FrameworkElement>();
+    if (!slot || slot.Visibility() != winrt::Windows::UI::Xaml::Visibility::Visible) continue;
+    auto taskButton = FindDockTaskListButtonTai(slot, 0);
+    const bool isApp = static_cast<bool>(taskButton);
+    if (!isApp) {
+      if (p.systemButtons == 2) continue;
+      if (p.systemButtons == 1 && IsDockStartButtonTai(slot)) continue;
+    }
+    // The transform goes on the button's template root, never on the repeater
+    // child itself: TAI measures those children with TransformToVisual, which
+    // would include our scale and spread and make it re-centre the island and
+    // move the tray. Transforms on descendants stay out of that measurement.
+    FrameworkElement host = isApp ? taskButton : slot;
+    FrameworkElement target{nullptr};
+    if (Media::VisualTreeHelper::GetChildrenCount(host) > 0) {
+      target = Media::VisualTreeHelper::GetChild(host, 0).try_as<FrameworkElement>();
+    }
+    if (!target) {
+      ++pending;  // template still loading
+      continue;
+    }
+    DockMagnifyButtonTai entry;
+    for (auto const& old : ctx.buttons) {
+      if (IsSameObjectTai(old.target.get(), target)) entry = old;
+    }
+    entry.slot = winrt::make_weak(slot);
+    entry.target = winrt::make_weak(target);
+    if (!InstallDockTransformTai(entry, target)) continue;
+    next.push_back(entry);
+  }
+  // Buttons that are no longer animated go back to identity.
+  for (auto& old : ctx.buttons) {
+    bool kept = false;
+    for (auto const& b : next) kept = kept || IsSameObjectTai(old.target.get(), b.target.get());
+    if (!kept) ResetDockButtonTai(old);
+  }
+  ctx.buttons = std::move(next);
+  ctx.signature = pending > 0 ? 0 : sig;  // retry next frame while templates load
+  Wh_Log(L"dock magnify: %d slots, %d animated", count, static_cast<int>(ctx.buttons.size()));
+}
+void ResetDockMagnifyContextTai(DockMagnifyContextTai& ctx) {
+  for (auto& b : ctx.buttons) ResetDockButtonTai(b);
+  ctx.intensity = 0.0;
+  ctx.bounceStrength = 0.0;
+  ctx.bouncing = false;
+}
+void StopDockMagnifyRenderingTai() {
+  if (!g_dockMagnifyRenderingTai) return;
+  try {
+    Media::CompositionTarget::Rendering(g_dockMagnifyRenderTokenTai);
+  } catch (...) {
+  }
+  g_dockMagnifyRenderingTai = false;
+  Wh_Log(L"dock magnify: render loop stopped");
+}
+// Advances one context by one frame. Returns true while it still moves.
+bool StepDockMagnifyContextTai(DockMagnifyContextTai& ctx, DockMagnifyParamsTai const& p,
+                               std::chrono::steady_clock::time_point now, double dtSec) {
+  auto repeater = ctx.repeater.get();
+  if (!repeater) return false;
+  RefreshDockButtonsTai(ctx, repeater, p);
+  ctx.intensity = DockFocusStepTai(ctx.intensity, ctx.inside, dtSec * 1000.0, p.focusMs);
+  const size_t n = ctx.buttons.size();
+  std::vector<double> scales(n, 1.0), widths(n, 0.0), shifts(n, 0.0);
+  size_t nearest = static_cast<size_t>(-1);
+  double nearestDistance = p.reach + 1.0;
+  for (size_t i = 0; i < n; ++i) {
+    auto slot = ctx.buttons[i].slot.get();
+    if (!slot) continue;
+    // Layout offset, so our own transform never feeds back into the distance.
+    const double x = slot.ActualOffset().x;
+    const double w = slot.ActualWidth();
+    const double d = p.labelsMode ? DockSpanDistanceTai(ctx.pointerX, x, x + w)
+                                  : std::fabs(ctx.pointerX - (x + w / 2.0));
+    scales[i] = DockScaleAtTai(d, p.reach, p.maxScale, p.curve);
+    widths[i] = w;
+    if (d < nearestDistance) {
+      nearestDistance = d;
+      nearest = i;
+    }
+    auto& b = ctx.buttons[i];
+    const float originX = p.labelsMode && w > 0.0 ? static_cast<float>(24.0 / w) : 0.5f;
+    const float originY = p.bounceLift ? 1.0f : 0.5f;
+    if (originX != b.originX || originY != b.originY) {
+      if (auto target = b.target.get()) target.RenderTransformOrigin({originX, originY});
+      b.originX = originX;
+      b.originY = originY;
+    }
+  }
+  if (n > 0) DockSpreadShiftsTai(scales.data(), widths.data(), n, p.spacing, shifts.data());
+  // Idle bounce once the pointer rests on the dock.
+  const double restMs = std::chrono::duration<double, std::milli>(now - ctx.lastMoveTime).count();
+  if (p.bounce && ctx.inside && restMs > p.bounceDelayMs) {
+    if (!ctx.bouncing) {
+      ctx.bouncing = true;
+      ctx.bounceStart = now;
+    }
+  } else {
+    ctx.bouncing = false;
+  }
+  ctx.bounceStrength = DockFocusStepTai(ctx.bounceStrength, ctx.bouncing, dtSec * 1000.0, p.focusMs);
+  const double wave = DockBounceWaveTai(
+      std::chrono::duration<double, std::milli>(now - ctx.bounceStart).count());
+  const bool bounceHere = ctx.bounceStrength > 0.0 && nearestDistance < p.reach / 2.0;
+  const double alpha = DockFollowAlphaTai(p.followSpeed, dtSec);
+  bool moving = false;
+  for (size_t i = 0; i < n; ++i) {
+    auto& b = ctx.buttons[i];
+    const double targetScale = 1.0 + (scales[i] - 1.0) * ctx.intensity;
+    const double targetShift = shifts[i] * ctx.intensity;
+    b.scale += (targetScale - b.scale) * alpha;
+    b.shift += (targetShift - b.shift) * alpha;
+    if (std::fabs(b.scale - targetScale) > 0.001 || std::fabs(b.shift - targetShift) > 0.05) {
+      moving = true;
+    }
+    double bounceScale = 1.0, lift = 0.0;
+    if (bounceHere && i == nearest) {
+      bounceScale = 1.0 + wave * kDockBounceScaleTai * ctx.bounceStrength;
+      lift = p.bounceLift ? wave * kDockBounceLiftPxTai * ctx.bounceStrength : 0.0;
+    }
+    WriteDockTransformTai(b, b.scale, b.shift, bounceScale, lift);
+  }
+  const bool active = ctx.inside || ctx.intensity > 0.0 || ctx.bounceStrength > 0.0 || moving;
+  if (!active) {
+    for (auto& b : ctx.buttons) ResetDockButtonTai(b);  // settle exactly at identity
+  }
+  return active;
+}
+void OnDockMagnifyRenderingTai(winrt::Windows::Foundation::IInspectable const&,
+                               winrt::Windows::Foundation::IInspectable const&) {
+  try {
+    const auto now = std::chrono::steady_clock::now();
+    const double dt = std::chrono::duration<double>(now - g_dockMagnifyLastFrameTai).count();
+    g_dockMagnifyLastFrameTai = now;
+    const auto params = GetDockMagnifyParamsTai();
+    bool anyActive = false;
+    for (auto& ctx : g_dockMagnifyContextsTai) {
+      anyActive = StepDockMagnifyContextTai(ctx, params, now, dt) || anyActive;
+    }
+    // [DOCK-DIAG] temporary: pointer events and frames per second, one line a second.
+    static auto diagStart = now;
+    static int diagFrames = 0;
+    static double diagMaxDt = 0.0;
+    ++diagFrames;
+    diagMaxDt = std::max(diagMaxDt, dt);
+    if (now - diagStart >= std::chrono::seconds(1)) {
+      int moves = 0, buttons = 0;
+      for (auto& ctx : g_dockMagnifyContextsTai) {
+        moves += ctx.moveEvents;
+        ctx.moveEvents = 0;
+        buttons += static_cast<int>(ctx.buttons.size());
+      }
+      Wh_Log(L"[DOCK-DIAG] moves/s=%d frames/s=%d maxDt=%.1fms buttons=%d", moves, diagFrames,
+             diagMaxDt * 1000.0, buttons);
+      diagStart = now;
+      diagFrames = 0;
+      diagMaxDt = 0.0;
+    }
+    if (!anyActive) StopDockMagnifyRenderingTai();
+  } catch (winrt::hresult_error const& ex) {
+    Wh_Log(L"dock magnify: frame failed %08X: %s", ex.code(), ex.message().c_str());
+    for (auto& ctx : g_dockMagnifyContextsTai) ResetDockMagnifyContextTai(ctx);
+    StopDockMagnifyRenderingTai();
+  } catch (...) {
+    Wh_Log(L"dock magnify: frame failed %08X", winrt::to_hresult());
+    for (auto& ctx : g_dockMagnifyContextsTai) ResetDockMagnifyContextTai(ctx);
+    StopDockMagnifyRenderingTai();
+  }
+}
+void StartDockMagnifyRenderingTai() {
+  if (g_dockMagnifyRenderingTai) return;
+  g_dockMagnifyLastFrameTai = std::chrono::steady_clock::now();
+  g_dockMagnifyRenderTokenTai = Media::CompositionTarget::Rendering(
+      winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>(
+          &OnDockMagnifyRenderingTai));
+  g_dockMagnifyRenderingTai = true;
+  Wh_Log(L"dock magnify: render loop started");
+}
+void DetachDockMagnifyContextTai(DockMagnifyContextTai& ctx) {
+  if (auto frame = ctx.frame.get()) {
+    try {
+      if (ctx.movedHandler) frame.RemoveHandler(UIElement::PointerMovedEvent(), ctx.movedHandler);
+      if (ctx.exitedHandler) frame.RemoveHandler(UIElement::PointerExitedEvent(), ctx.exitedHandler);
+    } catch (...) {
+    }
+  }
+  ResetDockMagnifyContextTai(ctx);
+}
+void StopDockMagnifyAllTai() {
+  StopDockMagnifyRenderingTai();
+  for (auto& ctx : g_dockMagnifyContextsTai) DetachDockMagnifyContextTai(ctx);
+  g_dockMagnifyContextsTai.clear();
+}
+// Called from ApplyStyle on every style pass: attaches the pointer handlers to
+// this taskbar frame once, or detaches them when magnification is off.
+void UpdateDockMagnifyHooksTai(FrameworkElement const& taskFrame, FrameworkElement const& repeater) {
+  if (!taskFrame || !repeater) return;
+  try {
+    auto* existing = FindDockMagnifyContextTai(taskFrame);
+    if (!DockMagnifyEnabledTai()) {
+      if (existing) {
+        DetachDockMagnifyContextTai(*existing);
+        std::erase_if(g_dockMagnifyContextsTai, [&](DockMagnifyContextTai const& ctx) {
+          return &ctx == existing;
+        });
+        if (g_dockMagnifyContextsTai.empty()) StopDockMagnifyRenderingTai();
+      }
+      return;
+    }
+    if (existing) {
+      existing->repeater = winrt::make_weak(repeater);
+      return;
+    }
+    DockMagnifyContextTai ctx;
+    ctx.frame = winrt::make_weak(taskFrame);
+    ctx.repeater = winrt::make_weak(repeater);
+    ctx.movedHandler = winrt::box_value(Input::PointerEventHandler(
+        [](winrt::Windows::Foundation::IInspectable const& sender,
+           Input::PointerRoutedEventArgs const& args) {
+      auto* c = FindDockMagnifyContextTai(sender);
+      auto rep = c ? c->repeater.get() : nullptr;
+      if (!rep || !DockMagnifyEnabledTai()) return;
+      const auto now = std::chrono::steady_clock::now();
+      const double x = args.GetCurrentPoint(rep).Position().X;
+      if (!c->inside || std::fabs(x - c->lastMoveX) > 0.5) c->lastMoveTime = now;
+      c->lastMoveX = x;
+      c->pointerX = x;
+      c->inside = true;
+      ++c->moveEvents;
+      StartDockMagnifyRenderingTai();
+    }));
+    ctx.exitedHandler = winrt::box_value(Input::PointerEventHandler(
+        [](winrt::Windows::Foundation::IInspectable const& sender,
+           Input::PointerRoutedEventArgs const&) {
+      if (auto* c = FindDockMagnifyContextTai(sender)) {
+        c->inside = false;
+        c->bouncing = false;
+      }
+    }));
+    taskFrame.AddHandler(UIElement::PointerMovedEvent(), ctx.movedHandler, true);
+    taskFrame.AddHandler(UIElement::PointerExitedEvent(), ctx.exitedHandler, true);
+    g_dockMagnifyContextsTai.push_back(std::move(ctx));
+    Wh_Log(L"dock magnify: attached to taskbar frame");
+  } catch (winrt::hresult_error const& ex) {
+    Wh_Log(L"dock magnify: attach failed %08X: %s", ex.code(), ex.message().c_str());
+  } catch (...) {
+    Wh_Log(L"dock magnify: attach failed %08X", winrt::to_hresult());
+  }
+}
+// ==== end Windows-OCT dock magnify ====
 void ApplyMeasuredChildStyles(
     ChildrenLayoutMeasurementTai const& measurement) {
   const float tbHeightFloat = static_cast<float>(g_settings.userDefinedTaskbarHeight);
@@ -7229,6 +8358,7 @@ void ApplyMeasuredChildStyles(
       }
     }
     if (auto iconPanelElement = FindChildByName(child, L"IconPanel")) {
+      ApplyAccentButtonStatesTai(child, iconPanelElement);
       if (auto mostRecentlyUsedDivider = FindChildByName(iconPanelElement, L"MostRecentlyUsedDivider")) {
         StyleNativeDividerElement(mostRecentlyUsedDivider);
       }
@@ -7874,6 +9004,57 @@ void UpdateGlobalSettings() {
   if (originalHex) {
     Wh_FreeStringSetting(originalHex);
   }
+  // Windows-OCT accent twin
+  g_settings.accentEffects = (getInt(L"AccentEffects") != 0) && !g_unloading;
+  {
+    PCWSTR source = Wh_GetStringSetting(L"AccentSource");
+    g_settings.accentSource = 0;
+    if (source && _wcsicmp(source, L"windows") == 0) g_settings.accentSource = 1;
+    if (source && _wcsicmp(source, L"custom") == 0) g_settings.accentSource = 2;
+    if (source) Wh_FreeStringSetting(source);
+    PCWSTR customHex = Wh_GetStringSetting(L"CustomAccent");
+    PCWSTR customDigits = customHex;
+    if (customDigits && *customDigits == L'#') ++customDigits;
+    unsigned int cr = 0xF0, cg = 0x5C, cb = 0xD0;
+    if (!customDigits || swscanf_s(customDigits, L"%02x%02x%02x", &cr, &cg, &cb) != 3) {
+      cr = 0xF0; cg = 0x5C; cb = 0xD0;
+    }
+    g_settings.accentCustomRgb = (cr << 16) | (cg << 8) | cb;
+    if (customHex) Wh_FreeStringSetting(customHex);
+  }
+  g_settings.accentGlassTint = g_unloading ? 0u : static_cast<unsigned int>(clamp(getInt(L"AccentGlassTint"), 0, 100));
+  g_settings.accentGlow = g_unloading ? 0u : static_cast<unsigned int>(clamp(getInt(L"AccentGlow"), 0, 100));
+  g_settings.accentSheen = (getInt(L"AccentSheen") != 0) && !g_unloading;
+  g_settings.accentEdgeLight = (getInt(L"AccentEdgeLight") != 0) && !g_unloading;
+  g_settings.accentRunningIndicators = (getInt(L"AccentRunningIndicators") != 0) && !g_unloading;
+  g_settings.accentHoverGlow = (getInt(L"AccentHoverGlow") != 0) && !g_unloading;
+  g_settings.dockMagnify = (getInt(L"DockMagnify") != 0) && !g_unloading;
+  g_settings.dockMagnifyScale = static_cast<unsigned int>(clamp(getInt(L"DockMagnifyScale"), 101, 220));
+  g_settings.dockMagnifyReach = static_cast<unsigned int>(clamp(getInt(L"DockMagnifyReach"), 40, 300));
+  g_settings.dockMagnifySpacing = static_cast<unsigned int>(clamp(getInt(L"DockMagnifySpacing"), 0, 100));
+  g_settings.dockMagnifyFollowSpeed = static_cast<unsigned int>(clamp(getInt(L"DockMagnifyFollowSpeed"), 0, 60));
+  g_settings.dockMagnifyFocusDuration = static_cast<unsigned int>(clamp(getInt(L"DockMagnifyFocusDuration"), 50, 1000));
+  g_settings.dockMagnifyBounce = getInt(L"DockMagnifyBounce") != 0;
+  g_settings.dockMagnifyBounceDelay = static_cast<unsigned int>(clamp(getInt(L"DockMagnifyBounceDelay"), 0, 5000));
+  g_settings.dockMagnifyBounceLift = getInt(L"DockMagnifyBounceLift") != 0;
+  g_settings.dockMagnifyLabelsMode = getInt(L"DockMagnifyLabelsMode") != 0;
+  {
+    PCWSTR curve = Wh_GetStringSetting(L"DockMagnifyCurve");
+    g_settings.dockMagnifyCurve = 0;
+    if (curve && _wcsicmp(curve, L"linear") == 0) g_settings.dockMagnifyCurve = 1;
+    if (curve && _wcsicmp(curve, L"exponential") == 0) g_settings.dockMagnifyCurve = 2;
+    if (curve) Wh_FreeStringSetting(curve);
+    PCWSTR buttons = Wh_GetStringSetting(L"DockMagnifySystemButtons");
+    g_settings.dockMagnifySystemButtons = 0;
+    if (buttons && _wcsicmp(buttons, L"noStart") == 0) g_settings.dockMagnifySystemButtons = 1;
+    if (buttons && _wcsicmp(buttons, L"appsOnly") == 0) g_settings.dockMagnifySystemButtons = 2;
+    if (buttons) Wh_FreeStringSetting(buttons);
+  }
+  if (g_settings.accentEffects && g_settings.accentEdgeLight) {
+    // The clock's edge light is 1.2px; the default TAI border (0.8px) would read as a hairline.
+    g_settings.userDefinedTaskbarBorderThickness = std::max(g_settings.userDefinedTaskbarBorderThickness, 1.2);
+  }
+  LoadAccentPaletteTai();
   // String list
   PCWSTR dividerAppNames = Wh_GetStringSetting(L"DividedAppNames");
   CompileDividedAppPatternsTai(SplitAndTrim(dividerAppNames));
@@ -8007,6 +9188,8 @@ bool ApplyStyle(FrameworkElement const& xamlRootContent, std::wstring monitorNam
     Wh_Log(L"Failed to find TaskbarFrameRepeater in rootGridTaskBar");
     return false;
   }
+  // Here, not at the end: most passes return early once offsets are stable.
+  UpdateDockMagnifyHooksTai(taskFrame, taskbarFrameRepeater);
   auto trayFrame = FindChildByClassName(xamlRootContent, L"SystemTray.SystemTrayFrame");
   if (!trayFrame) {
     Wh_Log(L"Failed to find SystemTray.SystemTrayFrame");
@@ -8836,11 +10019,9 @@ bool ApplyStyle(FrameworkElement const& xamlRootContent, std::wstring monitorNam
             backgroundResources.borderShape.StrokeThickness(
                 g_settings.userDefinedTaskbarBorderThickness);
             backgroundResources.borderShape.FillBrush(nullptr);
-            backgroundResources.borderBrush.Color({
-                g_settings.userDefinedTaskbarBorderOpacity,
-                static_cast<BYTE>(g_settings.borderColorR),
-                static_cast<BYTE>(g_settings.borderColorG),
-                static_cast<BYTE>(g_settings.borderColorB)});
+            // Windows-OCT accent twin: edge light, glow and sheen (or the
+            // original flat border when the effects are off).
+            StyleTaiAccentLayers(backgroundResources);
             backgroundResources.borderGeometry.Size({
                 std::max(
                     0.0f,
@@ -9187,6 +10368,7 @@ void Wh_ModAfterInit() {
   LoadSettingsTBIconSize();
   LoadSettingsStartButtonPosition();
   UpdateGlobalSettings();
+  StartAccentWatcherTai();
   ScheduleInitialExplorerStyleApply();
 }
 void Wh_ModBeforeUninit() {
@@ -9194,6 +10376,11 @@ void Wh_ModBeforeUninit() {
     return;
   }
   g_unloading = true;
+  if (HWND hTaskbarWndForDock = FindCurrentProcessTaskbarWnd()) {
+    // Revoke pointer and per-frame handlers on the UI thread before the DLL goes away.
+    RunFromWindowThread(hTaskbarWndForDock, [](void*) { StopDockMagnifyAllTai(); }, nullptr);
+  }
+  StopAccentWatcherTai();
   CleanupDebounce();
   UninitMinimizeAnimationCorrectionTai();
   Wh_ModBeforeUninitTBIconSize();
@@ -9208,6 +10395,7 @@ void Wh_ModUninit() {
   if (g_PartialMode) {
     return;
   }
+  StopAccentWatcherTai();
   UninitMinimizeAnimationCorrectionTai();
   CleanupDebounce();
   Wh_ModUninitTBIconSize();

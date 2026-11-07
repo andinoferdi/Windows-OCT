@@ -2,7 +2,7 @@
 // @id              desktop-flip-clock
 // @name            Desktop Glass Clock
 // @description     Frosted-glass desktop clock that adapts to any wallpaper, any resolution and any display scale.
-// @version         1.0.0
+// @version         1.1.0
 // @author          Levelup iD
 // @include         explorer.exe
 // @compilerOptions -lgdiplus -ldwmapi -lgdi32 -luser32 -lole32 -lshell32 -lshlwapi -lsecur32 -lnetapi32
@@ -850,6 +850,34 @@ static void AnalyzeRegion(int x0, int y0, int x1, int y1) {
     g_palette.tint = HslToRgb(h, (std::min)(s, 0.55f) * 0.9f, 0.10f);
 }
 
+static DWORD PackRgb(const Rgb& c) {
+    return (static_cast<DWORD>(ToByte(c.r)) << 16) | (static_cast<DWORD>(ToByte(c.g)) << 8) |
+           static_cast<DWORD>(ToByte(c.b));
+}
+
+// Shares the clock palette with the TAI taskbar mod (Windows-OCT accent twin).
+// The taskbar watches HKCU\Software\Windows-OCT and restyles itself on change.
+static void PublishAccent() {
+    static DWORD lastAccent = 0xFFFFFFFF, lastAccent2 = 0xFFFFFFFF, lastTint = 0xFFFFFFFF;
+    const DWORD accent = PackRgb(g_palette.accent);
+    const DWORD accent2 = PackRgb(g_palette.accent2);
+    const DWORD tint = PackRgb(g_palette.tint);
+    if (accent == lastAccent && accent2 == lastAccent2 && tint == lastTint) return;
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Windows-OCT", 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key,
+                        nullptr) != ERROR_SUCCESS) {
+        return;
+    }
+    // Accent is written last; the taskbar debounces, so it never keeps a half-updated palette.
+    RegSetValueExW(key, L"Tint", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&tint), sizeof(tint));
+    RegSetValueExW(key, L"Accent2", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&accent2), sizeof(accent2));
+    RegSetValueExW(key, L"Accent", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&accent), sizeof(accent));
+    RegCloseKey(key);
+    lastAccent = accent;
+    lastAccent2 = accent2;
+    lastTint = tint;
+}
+
 // ---------------------------------------------------------------------------
 // Fonts
 // ---------------------------------------------------------------------------
@@ -1033,6 +1061,7 @@ static void BuildGlass() {
             const Rgb wa = WindowsAccent(ok);
             if (ok) SetAccentFromBase(wa, false);
         }
+        PublishAccent();
         return;
     }
 
@@ -1045,6 +1074,7 @@ static void BuildGlass() {
     // Palette from a slightly larger area so the accent represents the surroundings.
     AnalyzeRegion(static_cast<int>(px - pw * 0.25f), static_cast<int>(py - ph * 0.25f),
                   static_cast<int>(px + pw * 1.25f), static_cast<int>(py + ph * 1.25f));
+    PublishAccent();
 
     const float realRadius = (6.0f + g_settings.blurStrength * 0.55f) * L.s;
     const int r = (std::max)(1, static_cast<int>(realRadius * k / 1.7f + 0.5f));

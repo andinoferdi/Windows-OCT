@@ -26,8 +26,8 @@ TAI lets you transform your Windows 11 taskbar into a smooth floating dock witho
 # Bug reports
 Please file bug reports here: https://github.com/DarkionAvey/windhawk-taskbar-centered-condensed/issues
 ---
-## 🚀 How to Install (Development Build)
-⚠️ **Note:** Please disable any mods that affect taskbar height or taskbar icons—this mod already includes those
+## How to Install (Development Build)
+**Note:** Please disable any mods that affect taskbar height or taskbar icons—this mod already includes those
 features.
 1. [Install Windhawk](https://windhawk.net/) if you haven't already.
 2. Copy the contents of [
@@ -41,16 +41,16 @@ features.
 ## 🛠 Source Code
 The actual mod code is split into files under [
 `mod-parts/`](https://github.com/DarkionAvey/windhawk-taskbar-centered-condensed/blob/main/mod-parts/), which are later merged together using a Python script.
-❗ **Do not edit `assembled-mod.cpp` manually**, as any changes will be overwritten in the next build cycle. Instead,
+**Do not edit `assembled-mod.cpp` manually**, as any changes will be overwritten in the next build cycle. Instead,
 modify the source files in the `mod-parts` directory.
 ---
-## 🙌 Credits
+## Credits
 Huge thanks to these awesome developers who made this mod possible -- your contributions to modding Windows are truly appreciated!:
 - [`Michael Maltsev (m417z)`](https://github.com/m417z)
 - [`Valentin Radu (valinet)`](https://github.com/valinet)
 - [`TranslucentTB team`](https://github.com/translucenttb/translucenttb)
 ---
-## 🔥 Recommended Mods
+## Recommended Mods
 - [Taskbar Fluent Media Player](https://windhawk.net/mods/taskbar-fluent-media-player) \[Set player position to Tray\]
 - [Smart Auto Hide for Taskbar](https://windhawk.net/mods/taskbar-auto-hide-when-maximized)
 - [Taskbar Auto-Hide Speed/Frame Rate](https://windhawk.net/mods/taskbar-auto-hide-speed)
@@ -311,19 +311,7 @@ Huge thanks to these awesome developers who made this mod possible -- your contr
   - appsOnly: App buttons only
 */
 // ==/WindhawkModSettings==
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////  .___________..______    __    ______   ______   .__   __.      _______. __   ________   _______   ////
-////  |           ||   _  \  |  |  /      | /  __  \  |  \ |  |     /       ||  | |       /  |   ____|  ////
-////  `---|  |----`|  |_)  | |  | |  ,----'|  |  |  | |   \|  |    |   (----`|  | `---/  /   |  |__     ////
-////      |  |     |   _  <  |  | |  |     |  |  |  | |  . `  |     \   \    |  |    /  /    |   __|    ////
-////      |  |     |  |_)  | |  | |  `----.|  `--'  | |  |\   | .----)   |   |  |   /  /----.|  |____   ////
-////      |__|     |______/  |__|  \______| \______/  |__| \__| |_______/    |__|  /________||_______|  ////
-////                                                                                                    ////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Part 1: taskbar height and icon size.
 #include <windhawk_utils.h>
 #undef GetCurrentTime
 #include <initguid.h>
@@ -364,8 +352,6 @@ constexpr int kDefaultTaskbarHeight = 56;
 constexpr int kDefaultTaskbarIconSize = 30;
 constexpr int kDefaultTaskbarButtonSize = 56;
 constexpr int kDefaultTaskbarOffsetY = 6;
-constexpr int kDefaultTrayIconSize = 15;
-constexpr int kDefaultTrayButtonSize = 30;
 constexpr int kSystemSmallTaskbarIconSize = 16;
 constexpr int kSystemMediumTaskbarIconSize = 24;
 constexpr int kSystemSmallTaskbarButtonSize = 32;
@@ -379,9 +365,6 @@ constexpr int kMaxTaskbarIconSize = 300;
 constexpr int kMinTrayIconSize = 15;
 constexpr int kMinTrayButtonSize = 20;
 constexpr double kLayoutToleranceDip = 0.5;
-constexpr int kWorkerShutdownPollMs = 10;
-constexpr int kDelayedApplyWorkerShutdownTimeoutMs = 5000;
-constexpr int kAnimationFollowupWorkerShutdownTimeoutMs = 2000;
 constexpr int kTaskbarMeasurePollIntervalMs = 100;
 constexpr int kTaskbarMeasureOverrideTimeoutMs = 10000;
 constexpr int kHookDrainPollIntervalMs = 100;
@@ -499,7 +482,7 @@ struct ModSettings {
 };
 ModSettings g_settings;
 std::recursive_mutex g_settingsMutex;
-// ==== Windows-OCT accent twin: palette shared with the Desktop Glass Clock ====
+// Windows-OCT accent twin: palette shared with the Desktop Glass Clock.
 #include <winrt/Windows.UI.h>
 struct AccentPaletteTai {
   winrt::Windows::UI::Color accent{255, 240, 92, 208};
@@ -516,7 +499,6 @@ inline bool AccentOn(bool effectEnabled) {
   return !g_unloading && g_settings.accentEffects && effectEnabled;
 }
 bool DockMagnifyEnabledTai();  // Windows-OCT dock magnify, defined in its block
-// ==== end Windows-OCT accent twin palette ====
 bool GetUserDefinedAlignFlyoutInner() {
   std::lock_guard<std::recursive_mutex> lock(g_settingsMutex);
   return g_settings.userDefinedAlignFlyoutInner;
@@ -780,7 +762,6 @@ void RequestTaskbarButtonSizeRelayout();
 void ArmInitialExplorerStyleApplyDelay();
 void ScheduleInitialExplorerStyleApply();
 int g_lastRecordedStartMenuWidth=0;
-std::atomic<bool> g_already_requested_debounce_initializing = false;
 STDAPI GetDpiForMonitor(HMONITOR hmonitor, MONITOR_DPI_TYPE dpiType, UINT* dpiX, UINT* dpiY);
 #include <Windows.h>
 bool IsStartMenuOrbLeftAligned() {
@@ -890,7 +871,6 @@ size_t OffsetFromAssemblyRegex(void* func,
         }
         std::match_results<std::string_view::const_iterator> match;
         if (std::regex_match(s.begin(), s.end(), match, regex)) {
-            // Wh_Log(L"%S", result.text);
             return std::stoull(match[1], nullptr, 16);
         }
     }
@@ -1028,7 +1008,6 @@ ResourceDictionary_Lookup_TaskbarView_Hook(
     void* pThis,
     void** result,
     winrt::Windows::Foundation::IInspectable* key) {
-    //
     auto ret = ResourceDictionary_Lookup_TaskbarView_Original
         ? ResourceDictionary_Lookup_TaskbarView_Original(pThis, result, key)
         : nullptr;
@@ -1050,7 +1029,6 @@ ResourceDictionary_Lookup_SearchUxUi_Hook(
     void* pThis,
     void** result,
     winrt::Windows::Foundation::IInspectable* key) {
-    //
     auto ret = ResourceDictionary_Lookup_SearchUxUi_Original
         ? ResourceDictionary_Lookup_SearchUxUi_Original(pThis, result, key)
         : nullptr;
@@ -1414,7 +1392,6 @@ LONG GetFrameSizeOffset() {
             if (!std::regex_match(s1.begin(), s1.end(), match1, regex1)) {
                 continue;
             }
-            // Wh_Log(L"%S", result1.text);
             LONG offset = std::stoull(match1[1], nullptr, 16);
             Wh_Log(L"frameSizeOffset=0x%X", offset);
             return (offset < 0 || offset > 0xFFFF) ? 0 : offset;
@@ -1534,9 +1511,6 @@ LONG GetLastHeightOffset() {
             if (!std::regex_match(s3.begin(), s3.end(), regex3)) {
                 continue;
             }
-            // Wh_Log(L"%S", result1.text);
-            // Wh_Log(L"%S", result2.text);
-            // Wh_Log(L"%S", result3.text);
             LONG offset = std::stoull(match1[1], nullptr, 16);
             Wh_Log(L"lastHeightOffset=0x%X", offset);
             return (offset < 0 || offset > 0xFFFF) ? 0 : offset;
@@ -1631,7 +1605,6 @@ LONG GetTaskbarFrameOffset() {
             if (!std::regex_match(s1.begin(), s1.end(), match1, regex1)) {
                 continue;
             }
-            // Wh_Log(L"%S", result1.text);
             LONG offset = std::stoull(match1[1], nullptr, 16);
             Wh_Log(L"taskbarFrameOffset=0x%X", offset);
             return (offset < 0 || offset > 0xFFFF) ? 0 : offset;
@@ -1711,7 +1684,6 @@ void WINAPI SystemTraySecondaryController_UpdateFrameSize_Hook(void* pThis) {
 using SystemTrayFrame_Height_t = void(WINAPI*)(void* pThis, double value);
 SystemTrayFrame_Height_t SystemTrayFrame_Height_Original;
 void WINAPI SystemTrayFrame_Height_Hook(void* pThis, double value) {
-    //
     if (!IsVerticalTaskbar() && g_inSystemTrayController_UpdateFrameSize) {
         // Set the system tray height to NaN, otherwise it may not match the
         // custom taskbar height.
@@ -1814,12 +1786,7 @@ void WINAPI TaskListButton_UpdateBadge_Hook(void* pThis) {
         TaskListButton_UpdateBadge_Original(pThis);
         return;
     }
-    // Value 16 causes badges to be shown as a small dot. There are still some
-    // glitches with the badges, e.g. switching from large icons to small icons
-    // doesn't update from the badge to the dot, but new badges are shown as
-    // dots with small icons. Fixing it might require hooking several additional
-    // functions. Maybe one day...
-    //
+    // Same small-dot badge caveat as TaskListButton_OverlayIcon_Hook.
     // This hook handles UWP badges (e.g. Unigram).
     double* iconHeight = nullptr;
     double prevIconHeight;
@@ -1907,7 +1874,6 @@ LONG GetMediumTaskbarButtonExtentOffset() {
             }
             std::match_results<std::string_view::const_iterator> matchLdr;
             if (std::regex_match(s.begin(), s.end(), matchLdr, regexLdr)) {
-                // Wh_Log(L"%S", result.text);
                 std::string reg = matchLdr[1];
                 std::string regSrc = matchLdr[2];
                 LONG offset = std::stoull(matchLdr[3], nullptr, 16);
@@ -1917,14 +1883,12 @@ LONG GetMediumTaskbarButtonExtentOffset() {
             std::match_results<std::string_view::const_iterator> matchLdrOther;
             if (std::regex_match(s.begin(), s.end(), matchLdrOther,
                                  regexLdrOther)) {
-                // Wh_Log(L"%S", result.text);
                 std::string reg = matchLdrOther[1];
                 ldrs[ldrCount++] = {std::move(reg), std::string(), 0};
                 continue;
             }
             std::match_results<std::string_view::const_iterator> matchFsub;
             if (std::regex_match(s.begin(), s.end(), matchFsub, regexFsub)) {
-                // Wh_Log(L"%S", result.text);
                 std::string regA = matchFsub[1];
                 std::string regB = matchFsub[2];
                 std::remove_reference_t<decltype(ldrs[0])>* ldrA = nullptr;
@@ -2186,11 +2150,7 @@ void WINAPI RepeatButton_Width_Hook(void* pThis, double width) {
             if (!g_unloading) {
                 margin.Left = marginValue;
                 margin.Top = marginValue;
-                // Logically these should be marginValue too, but having no
-                // right/bottom margin doesn't seem to matter, while having
-                // values which are too tight sometimes cause the icon to
-                // disappear for some reason. Relevant issue:
-                // https://github.com/ramensoftware/windhawk-mods/issues/726
+                // Right/bottom stay 0 for the same reason as above (windhawk-mods#726).
                 margin.Right = 0;
                 margin.Bottom = 0;
                 if (g_taskbarHeight < 48) {
@@ -2447,7 +2407,7 @@ bool HookSystemTraySymbols(HMODULE module) {
     }
     if (SystemTrayController_UpdateFrameSize_SymbolAddress) {
         SystemTrayController_UpdateFrameSize_InitOffsets();
-        WindhawkUtils::Wh_SetFunctionHookT(
+        WindhawkUtils::SetFunctionHook(
             SystemTrayController_UpdateFrameSize_SymbolAddress,
             SystemTrayController_UpdateFrameSize_Hook,
             &SystemTrayController_UpdateFrameSize_Original);
@@ -2678,7 +2638,7 @@ bool HookTaskbarViewDllSymbols(HMODULE module,
 #ifdef _M_ARM64
     if (TaskbarConfiguration_UpdateFrameSize_SymbolAddress) {
         TaskbarConfiguration_UpdateFrameSize_InitOffsets();
-        WindhawkUtils::Wh_SetFunctionHookT(
+        WindhawkUtils::SetFunctionHook(
             TaskbarConfiguration_UpdateFrameSize_SymbolAddress,
             TaskbarConfiguration_UpdateFrameSize_Hook,
             &TaskbarConfiguration_UpdateFrameSize_Original);
@@ -2687,14 +2647,14 @@ bool HookTaskbarViewDllSymbols(HMODULE module,
     if (hookSystemTraySymbolsInline &&
         SystemTrayController_UpdateFrameSize_SymbolAddress) {
         SystemTrayController_UpdateFrameSize_InitOffsets();
-        WindhawkUtils::Wh_SetFunctionHookT(
+        WindhawkUtils::SetFunctionHook(
             SystemTrayController_UpdateFrameSize_SymbolAddress,
             SystemTrayController_UpdateFrameSize_Hook,
             &SystemTrayController_UpdateFrameSize_Original);
     }
     if (TaskbarController_OnGroupingModeChanged_Original) {
         TaskbarController_OnGroupingModeChanged_InitOffsets();
-WindhawkUtils::Wh_SetFunctionHookT(
+WindhawkUtils::SetFunctionHook(
             reinterpret_cast<TaskbarController_OnGroupingModeChanged_t>(
                 TaskbarController_OnGroupingModeChanged_Original),
             TaskbarController_OnGroupingModeChanged_Hook,
@@ -2959,15 +2919,15 @@ BOOL Wh_ModInitTBIconSize() {
         auto pKernelBaseLoadLibraryExW =
             (decltype(&LoadLibraryExW))GetProcAddress(kernelBaseModule,
                                                       "LoadLibraryExW");
-        WindhawkUtils::Wh_SetFunctionHookT(pKernelBaseLoadLibraryExW,
-                                           LoadLibraryExW_Hook,
-                                           &LoadLibraryExW_Original);
+        WindhawkUtils::SetFunctionHook(pKernelBaseLoadLibraryExW,
+                                       LoadLibraryExW_Hook,
+                                       &LoadLibraryExW_Original);
     }
-    WindhawkUtils::Wh_SetFunctionHookT(SHAppBarMessage, SHAppBarMessage_Hook,
-                                       &SHAppBarMessage_Original);
-    WindhawkUtils::Wh_SetFunctionHookT(SendMessageTimeoutW,
-                                       SendMessageTimeoutW_Hook,
-                                       &SendMessageTimeoutW_Original);
+    WindhawkUtils::SetFunctionHook(SHAppBarMessage, SHAppBarMessage_Hook,
+                                   &SHAppBarMessage_Original);
+    WindhawkUtils::SetFunctionHook(SendMessageTimeoutW,
+                                   SendMessageTimeoutW_Hook,
+                                   &SendMessageTimeoutW_Original);
     return TRUE;
 }
 void Wh_ModAfterInitTBIconSize() {
@@ -3032,22 +2992,8 @@ if (!g_unloading &&
     }
     ApplySettingsTBIconSize(g_settings_tbiconsize.taskbarHeight);
 }
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////       _______..___________.     ___      .______      .___________..______    __    __  .___________..___________.  ______   .__   __. .______     ______        _______. __  .___________. __    ______   .__   __.   ////
-////      /       ||           |    /   \     |   _  \     |           ||   _  \  |  |  |  | |           ||           | /  __  \  |  \ |  | |   _  \   /  __  \      /       ||  | |           ||  |  /  __  \  |  \ |  |   ////
-////     |   (----``---|  |----`   /  ^  \    |  |_)  |    `---|  |----`|  |_)  | |  |  |  | `---|  |----``---|  |----`|  |  |  | |   \|  | |  |_)  | |  |  |  |    |   (----`|  | `---|  |----`|  | |  |  |  | |   \|  |   ////
-////      \   \        |  |       /  /_\  \   |      /         |  |     |   _  <  |  |  |  |     |  |         |  |     |  |  |  | |  . `  | |   ___/  |  |  |  |     \   \    |  |     |  |     |  | |  |  |  | |  . `  |   ////
-////  .----)   |       |  |      /  _____  \  |  |\  \----.    |  |     |  |_)  | |  `--'  |     |  |         |  |     |  `--'  | |  |\   | |  |      |  `--'  | .----)   |   |  |     |  |     |  | |  `--'  | |  |\   |   ////
-////  |_______/        |__|     /__/     \__\ | _| `._____|    |__|     |______/   \______/      |__|         |__|      \______/  |__| \__| | _|       \______/  |_______/    |__|     |__|     |__|  \______/  |__| \__|   ////
-////                                                                                                                                                                                                                        ////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Part 2: Start button position.
 bool ApplyStyle(FrameworkElement const& element, std::wstring monitorName);
-bool InitializeDebounce();
-DispatcherTimer debounceTimer{nullptr};
 #include <windhawk_utils.h>
 #include <atomic>
 #include <functional>
@@ -3406,9 +3352,7 @@ using TaskbarCollapsibleLayoutXamlTraits_ArrangeOverride_t =
                      winrt::Windows::Foundation::Size* resultSize);
 TaskbarCollapsibleLayoutXamlTraits_ArrangeOverride_t
     TaskbarCollapsibleLayoutXamlTraits_ArrangeOverride_Original;
-// 26H2 realtime island forward declarations.
-// These helpers are implemented later in the assembled source, but the
-// ArrangeOverride hook needs to reference them here.
+// Defined in Part 3; the ArrangeOverride hook below needs them.
 int64_t DelayedApplyNowMs();
 void ArmSingleStyleApplyPass(bool resetAnimationTargets);
 extern std::atomic<int64_t> g_last_realtime_layout_apply_ms;
@@ -3748,7 +3692,6 @@ bool HookTaskbarDllSymbolsStartButtonPosition() {
         &CTaskListWnd__WndProc_Original,
         CTaskListWnd__WndProc_Hook,
     },
-    /////////////////////////////////////
     {
         {LR"(protected: long __cdecl CTaskBand::_InsertItem(struct HWND__ *,struct ITaskItem * *,struct HWND__ *,struct HWND__ *))"},
         &CTaskBand__InsertItem_Original,
@@ -4540,10 +4483,8 @@ BOOL Wh_ModSettingsChangedStartButtonPosition() {
     }
     return TRUE;
 }
-// ---- WindhawkBlur support ---------------------------------------------------
-// Based on the WindhawkBlur/XamlBlurBrush approach used by Windows 11 Taskbar Styler.
-// Yoinked from ramensoftware windows-11-taskbar-styler
-// which is yoinked from https://github.com/TranslucentTB/TranslucentTB/blob/release/ExplorerTAP/XamlBlurBrush.cpp
+// WindhawkBlur support, taken from ramensoftware's Windows 11 Taskbar Styler, which takes it from
+// https://github.com/TranslucentTB/TranslucentTB/blob/release/ExplorerTAP/XamlBlurBrush.cpp
 #include <dwmapi.h>
 #include <chrono>
 #include <string>
@@ -5224,19 +5165,7 @@ bool ApplyWindhawkBlurToBackgroundFill(FrameworkElement const& backgroundFillChi
   }
   return false;
 }
-//////////////////////////////////////////////////////
-//////////////////////////////////////////////////////
-//////////////////////////////////////////////////////
-/////      .___________.     ___       __        /////
-/////      |           |    /   \     |  |       /////
-/////      `---|  |----`   /  ^  \    |  |       /////
-/////          |  |       /  /_\  \   |  |       /////
-/////          |  |      /  _____  \  |  |       /////
-/////          |__|     /__/     \__\ |__|       /////
-/////                                            /////
-//////////////////////////////////////////////////////
-//////////////////////////////////////////////////////
-//////////////////////////////////////////////////////
+// Part 3: TAI island layout, styling and flyouts.
 #include <dwmapi.h>
 #include <chrono>
 #include <string>
@@ -5381,15 +5310,6 @@ static bool GetMonitorRectByNameTai(const std::wstring& monitorName, RECT* rect)
 static int RectWidthTai(const RECT& rect) {
   return rect.right - rect.left;
 }
-static int ClampIntTai(int value, int minValue, int maxValue) {
-  if (value < minValue) {
-    return minValue;
-  }
-  if (value > maxValue) {
-    return maxValue;
-  }
-  return value;
-}
 static void ClampRectCenterXToBoundsTai(RECT* rect, const RECT& bounds) {
   if (!rect || IsRectEmpty(rect) || IsRectEmpty(&bounds)) {
     return;
@@ -5401,16 +5321,8 @@ static void ClampRectCenterXToBoundsTai(RECT* rect, const RECT& bounds) {
   if (minCenterX > maxCenterX) {
     minCenterX = maxCenterX = (bounds.left + bounds.right) / 2;
   }
-  const int newCenterX = ClampIntTai(currentCenterX, minCenterX, maxCenterX);
+  const int newCenterX = ClampInt(currentCenterX, minCenterX, maxCenterX);
   OffsetRect(rect, newCenterX - currentCenterX, 0);
-}
-static std::wstring TrimTai(const std::wstring& value) {
-  const auto first = value.find_first_not_of(L" \t\r\n");
-  if (first == std::wstring::npos) {
-    return L"";
-  }
-  const auto last = value.find_last_not_of(L" \t\r\n");
-  return value.substr(first, last - first + 1);
 }
 static std::wstring GetWindowTextSafeTai(HWND hwnd) {
   if (!hwnd || !IsWindow(hwnd)) {
@@ -5426,10 +5338,10 @@ static std::wstring GetWindowTextSafeTai(HWND hwnd) {
     return L"";
   }
   text.resize(static_cast<size_t>(copied));
-  return TrimTai(text);
+  return TrimWide(text);
 }
 static std::wstring StripExeExtensionTai(std::wstring value) {
-  value = TrimTai(value);
+  value = TrimWide(value);
   if (value.size() > 4 && _wcsicmp(value.c_str() + value.size() - 4, L".exe") == 0) {
     value.resize(value.size() - 4);
   }
@@ -5904,9 +5816,9 @@ static void InitMinimizeAnimationCorrectionTai() {
   if (user32) {
     auto sendMessageW = reinterpret_cast<SendMessageW_t>(GetProcAddress(user32, "SendMessageW"));
     if (sendMessageW) {
-      if (WindhawkUtils::Wh_SetFunctionHookT(sendMessageW,
-                                             SendMessageW_HookTai,
-                                             &SendMessageW_OriginalTai)) {
+      if (WindhawkUtils::SetFunctionHook(sendMessageW,
+                                         SendMessageW_HookTai,
+                                         &SendMessageW_OriginalTai)) {
         Wh_Log(L"[MinRectFix] Successfully hooked SendMessageW");
       } else {
         Wh_Log(L"[MinRectFix] Failed to hook SendMessageW");
@@ -6272,7 +6184,6 @@ void ResetBackgroundVisualCache(TaskbarState& state) {
   state.backgroundFillIdentity = 0;
   state.lastBackgroundStyleGeneration = 0;
 }
-// ==== Windows-OCT accent twin ===============================================
 // The Desktop Glass Clock mod publishes its wallpaper palette to
 // HKCU\Software\Windows-OCT (Accent, Accent2, Tint as REG_DWORD 0x00RRGGBB).
 // This block reads it, watches it for changes and styles the dock with it.
@@ -6438,7 +6349,6 @@ void StartAccentWatcherTai() {
     StopAccentWatcherTai();
   }
 }
-// ==== end Windows-OCT accent twin (palette + watcher) =======================
 struct TaskbarBackgroundCompositionResourcesTai {
   winrt::Windows::UI::Composition::CompositionRoundedRectangleGeometry clipGeometry{nullptr};
   winrt::Windows::UI::Composition::CompositionGeometricClip clip{nullptr};
@@ -6538,7 +6448,7 @@ void CreateAccentLayersTai(
   }
 }
 // Applies the palette and toggles to the edge light, glow and sheen.
-void StyleTaiAccentLayers(TaskbarBackgroundCompositionResourcesTai& r) {
+void StyleTaiAccentLayers(TaskbarBackgroundCompositionResourcesTai& layers) {
   try {
     const winrt::Windows::UI::Color legacy{
         g_settings.userDefinedTaskbarBorderOpacity,
@@ -6551,25 +6461,25 @@ void StyleTaiAccentLayers(TaskbarBackgroundCompositionResourcesTai& r) {
       return c;
     };
     if (AccentOn(g_settings.accentEdgeLight)) {
-      r.edgeTop.Color({110, 255, 255, 255});
-      r.edgeMid.Color({26, 255, 255, 255});
-      r.edgeBottom.Color(withAlpha(palette.accent, 90));
+      layers.edgeTop.Color({110, 255, 255, 255});
+      layers.edgeMid.Color({26, 255, 255, 255});
+      layers.edgeBottom.Color(withAlpha(palette.accent, 90));
     } else {
       // Identical to the original flat CompositionColorBrush border.
-      r.edgeTop.Color(legacy);
-      r.edgeMid.Color(legacy);
-      r.edgeBottom.Color(legacy);
+      layers.edgeTop.Color(legacy);
+      layers.edgeMid.Color(legacy);
+      layers.edgeBottom.Color(legacy);
     }
-    if (r.glowVisual && r.glowCenter && r.glowEdge) {
+    if (layers.glowVisual && layers.glowCenter && layers.glowEdge) {
       const bool glow = AccentOn(g_settings.accentGlow > 0);
-      r.glowVisual.IsVisible(glow);
-      r.glowCenter.Color(withAlpha(
+      layers.glowVisual.IsVisible(glow);
+      layers.glowCenter.Color(withAlpha(
           palette.accent,
           glow ? static_cast<uint8_t>(std::round(g_settings.accentGlow * 2.55f)) : 0));
-      r.glowEdge.Color(withAlpha(palette.accent, 0));
+      layers.glowEdge.Color(withAlpha(palette.accent, 0));
     }
-    if (r.sheenVisual) {
-      r.sheenVisual.IsVisible(AccentOn(g_settings.accentSheen));
+    if (layers.sheenVisual) {
+      layers.sheenVisual.IsVisible(AccentOn(g_settings.accentSheen));
     }
   } catch (winrt::hresult_error const& ex) {
     Wh_Log(L"Accent twin: styling layers failed %08X", ex.code());
@@ -6888,17 +6798,8 @@ void ArmInitialExplorerStyleApplyDelay() {
       DelayedApplyNowMs() + kInitialExplorerStyleDelayMs;
   Wh_Log(L"Initial Explorer style apply armed");
 }
-bool InitializeDebounce() {
-  // Kept as a compatibility shim for older call sites. The old DispatcherTimer
-  // debounce was removed because timer creation/stop could race Explorer/XAML
-  // initialization and crash. Scheduling is now handled by DelayedApplyWorker.
-  g_worker_threads_stopping = false;
-  g_already_requested_debounce_initializing = false;
-  return true;
-}
-void CleanupDebounce() {
+void StopApplyWorkers() {
   g_worker_threads_stopping = true;
-  g_already_requested_debounce_initializing = false;
   g_scheduled_low_priority_update = false;
   g_delayed_apply_due_ms = 0;
   g_delayed_apply_generation.fetch_add(1);
@@ -7097,7 +6998,7 @@ void ApplySettingsFromTaskbarThreadGeometryChanged() {
 void ScheduleInitialExplorerStyleApply() {
   ApplySettingsDebounced(kInitialExplorerStyleDelayMs);
 }
-bool IsWeirdFrameworkElement(winrt::Windows::UI::Xaml::FrameworkElement const& element) {
+bool IsUnusableLayoutElement(winrt::Windows::UI::Xaml::FrameworkElement const& element) {
   if (!element) return true;
   try {
     auto transform = element.TransformToVisual(nullptr);
@@ -7631,7 +7532,7 @@ bool ApplyTaskbarButtonSizing(
   }
   return layoutChanged;
 }
-// ==== Windows-OCT accent twin: running indicators and hover glow ===========
+// Windows-OCT accent twin: running indicators and hover glow.
 // Colors are applied as Setters appended to the native template's visual
 // states (the mechanism Windows 11 Taskbar Styler uses for Fill@State), so the
 // taskbar's own state changes keep them. Our setters are marked by a brush
@@ -7800,8 +7701,7 @@ void ApplyAccentButtonStatesTai(FrameworkElement const& button,
     Wh_Log(L"Accent twin: button states failed %08X", winrt::to_hresult());
   }
 }
-// ==== end Windows-OCT accent twin (button states) ===========================
-// ==== Windows-OCT dock magnify math (pure) ====
+// Windows-OCT dock magnify math (pure).
 // Dock motion modelled on the Taskbar Dock Animation mod: curve falloff,
 // symmetric neighbour spread, exponential follow, a focus ramp and an idle
 // bounce. Re-implemented for TAI; no WinRT here so tests can compile it alone.
@@ -7867,8 +7767,7 @@ inline double DockBounceWaveTai(double elapsedMs) {
   const double t = std::fmod(std::max(elapsedMs, 0.0), kDockBouncePeriodMsTai) / kDockBouncePeriodMsTai;
   return std::sin(kDockPiTai * t);
 }
-// ==== end Windows-OCT dock magnify math ====
-// ==== Windows-OCT dock magnify ====
+// Windows-OCT dock magnify.
 #include <winrt/Windows.UI.Input.h>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Input.h>
@@ -7938,7 +7837,8 @@ struct DockMagnifyContextTai {
   double intensity{0.0};
   uint64_t signature{0};
   std::vector<DockMagnifyButtonTai> buttons;
-  int moveEvents{0};  // [DOCK-DIAG]
+  // Per-frame scratch, kept here so the render loop does not allocate.
+  std::vector<double> frameScales, frameWidths, frameShifts;
 };
 std::vector<DockMagnifyContextTai> g_dockMagnifyContextsTai;
 winrt::event_token g_dockMagnifyRenderTokenTai{};
@@ -8114,7 +8014,12 @@ bool StepDockMagnifyContextTai(DockMagnifyContextTai& ctx, DockMagnifyParamsTai 
   RefreshDockButtonsTai(ctx, repeater, p);
   ctx.intensity = DockFocusStepTai(ctx.intensity, ctx.inside, dtSec * 1000.0, p.focusMs);
   const size_t n = ctx.buttons.size();
-  std::vector<double> scales(n, 1.0), widths(n, 0.0), shifts(n, 0.0);
+  auto& scales = ctx.frameScales;
+  auto& widths = ctx.frameWidths;
+  auto& shifts = ctx.frameShifts;
+  scales.assign(n, 1.0);
+  widths.assign(n, 0.0);
+  shifts.assign(n, 0.0);
   size_t nearest = static_cast<size_t>(-1);
   double nearestDistance = p.reach + 1.0;
   for (size_t i = 0; i < n; ++i) {
@@ -8190,25 +8095,6 @@ void OnDockMagnifyRenderingTai(winrt::Windows::Foundation::IInspectable const&,
     for (auto& ctx : g_dockMagnifyContextsTai) {
       anyActive = StepDockMagnifyContextTai(ctx, params, now, dt) || anyActive;
     }
-    // [DOCK-DIAG] temporary: pointer events and frames per second, one line a second.
-    static auto diagStart = now;
-    static int diagFrames = 0;
-    static double diagMaxDt = 0.0;
-    ++diagFrames;
-    diagMaxDt = std::max(diagMaxDt, dt);
-    if (now - diagStart >= std::chrono::seconds(1)) {
-      int moves = 0, buttons = 0;
-      for (auto& ctx : g_dockMagnifyContextsTai) {
-        moves += ctx.moveEvents;
-        ctx.moveEvents = 0;
-        buttons += static_cast<int>(ctx.buttons.size());
-      }
-      Wh_Log(L"[DOCK-DIAG] moves/s=%d frames/s=%d maxDt=%.1fms buttons=%d", moves, diagFrames,
-             diagMaxDt * 1000.0, buttons);
-      diagStart = now;
-      diagFrames = 0;
-      diagMaxDt = 0.0;
-    }
     if (!anyActive) StopDockMagnifyRenderingTai();
   } catch (winrt::hresult_error const& ex) {
     Wh_Log(L"dock magnify: frame failed %08X: %s", ex.code(), ex.message().c_str());
@@ -8279,7 +8165,6 @@ void UpdateDockMagnifyHooksTai(FrameworkElement const& taskFrame, FrameworkEleme
       c->lastMoveX = x;
       c->pointerX = x;
       c->inside = true;
-      ++c->moveEvents;
       StartDockMagnifyRenderingTai();
     }));
     ctx.exitedHandler = winrt::box_value(Input::PointerEventHandler(
@@ -8300,7 +8185,6 @@ void UpdateDockMagnifyHooksTai(FrameworkElement const& taskFrame, FrameworkEleme
     Wh_Log(L"dock magnify: attach failed %08X", winrt::to_hresult());
   }
 }
-// ==== end Windows-OCT dock magnify ====
 void ApplyMeasuredChildStyles(
     ChildrenLayoutMeasurementTai const& measurement) {
   const float tbHeightFloat = static_cast<float>(g_settings.userDefinedTaskbarHeight);
@@ -8561,10 +8445,8 @@ void SetTaskbarOverflowButtonSuppressed(FrameworkElement const& overflowButton,
   } catch (...) {
   }
 }
-// ---- Temporary taskbar geometry diagnostics -------------------------------
-// Set to false after collecting logs. The throttle keeps ApplyStyle from
-// flooding Windhawk logs during insertion/removal animations.
-constexpr bool kDebugTaskbarGeometry = true;
+// Set to true to log taskbar geometry from ApplyStyle (throttled to one burst per 250 ms).
+constexpr bool kDebugTaskbarGeometry = false;
 constexpr int64_t kDebugTaskbarGeometryMinIntervalMs = 250;
 std::atomic<int64_t> g_lastTaskbarGeometryDebugLogMs = 0;
 bool ShouldLogTaskbarGeometry(bool interesting) {
@@ -8652,7 +8534,7 @@ static bool BuildMeasuredMinimizeAnimationButtonsTai(
     }
     measuredButtons->push_back(MinimizeAnimationMeasuredButtonTai{
         visibleRectPx,
-        TrimTai(observation.automationName)});
+        TrimWide(observation.automationName)});
   }
   return !measuredButtons->empty();
 }
@@ -8912,7 +8794,6 @@ void UpdateGlobalSettings() {
   std::lock_guard<std::recursive_mutex> settingsLock(g_settingsMutex);
   auto getInt = [&](PCWSTR key) { return Wh_GetIntSetting(key); };
   auto clamp = [](int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; };
-  // Booleans
   g_settings.userDefinedFlatTaskbarBottomCorners = (getInt(L"FlatTaskbarBottomCorners") != 0);
   g_settings.userDefinedFullWidthTaskbarBackground = (getInt(L"FullWidthTaskbarBackground") != 0) || g_unloading;
   if (g_settings.userDefinedFullWidthTaskbarBackground) g_settings.userDefinedFlatTaskbarBottomCorners = true;
@@ -8938,7 +8819,6 @@ void UpdateGlobalSettings() {
       (g_unloading || g_settings.userDefinedFlatTaskbarBottomCorners)
           ? 0
           : -offsetY;
-  // Height & Sizes
   int h = ClampInt(abs(ReadPositiveIntSettingOrDefault(L"TaskbarHeight", kDefaultTaskbarHeight)),
                    kMinTaskbarHeight,
                    kMaxTaskbarHeight);
@@ -8956,7 +8836,6 @@ void UpdateGlobalSettings() {
   g_settings.userDefinedTaskbarIconSize = g_unloading ? kSystemMediumTaskbarIconSize : taskbarIconSize;
   g_settings.userDefinedTrayIconSize = std::max(kMinTrayIconSize, getInt(L"TrayIconSize"));
   g_settings.userDefinedTrayButtonSize = std::max(kMinTrayButtonSize, getInt(L"TrayButtonSize"));
-  // Corner radii
   float tcr = float(fmax(0.0f, getInt(L"TaskbarCornerRadius")));
   tcr = fmin(tcr, g_settings.userDefinedTaskbarHeight / 2.0f);
   g_settings.userDefinedTaskbarCornerRadius = g_unloading ? 0.0f : tcr;
@@ -9055,7 +8934,6 @@ void UpdateGlobalSettings() {
     g_settings.userDefinedTaskbarBorderThickness = std::max(g_settings.userDefinedTaskbarBorderThickness, 1.2);
   }
   LoadAccentPaletteTai();
-  // String list
   PCWSTR dividerAppNames = Wh_GetStringSetting(L"DividedAppNames");
   CompileDividedAppPatternsTai(SplitAndTrim(dividerAppNames));
   if (dividerAppNames) {
@@ -9264,7 +9142,7 @@ bool ApplyStyle(FrameworkElement const& xamlRootContent, std::wstring monitorNam
   auto overflowButton = FindCapturedChildByClassNameTai(
       taskbarChildrenMeasurement,
       L"Taskbar.OverflowToggleButton");
-  bool isOverflowing = overflowButton != nullptr && !IsWeirdFrameworkElement(overflowButton);
+  bool isOverflowing = overflowButton != nullptr && !IsUnusableLayoutElement(overflowButton);
   double rootWidth = xamlRootContent.ActualWidth();
   state.lastRootWidth = static_cast<float>(rootWidth);
   const double minimumRootWidth =
@@ -10221,39 +10099,32 @@ bool IsExplorer() {
 }
 using SetWindowPos_t = BOOL(WINAPI*)(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int cx, int cy, UINT uFlags);
 SetWindowPos_t SetWindowPos_Original = nullptr;
-std::wstring GetProcessExeName(DWORD processId) {
-  std::wstring result = L"<unknown>";
-  HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
-  if (hProcess) {
-    WCHAR path[MAX_PATH];
-    DWORD size = ARRAYSIZE(path);
-    if (QueryFullProcessImageNameW(hProcess, 0, path, &size)) {
-      std::wstring fullPath = path;
-      size_t pos = fullPath.find_last_of(L"\\/");
-      result = (pos != std::wstring::npos) ? fullPath.substr(pos + 1) : fullPath;
-    }
-    CloseHandle(hProcess);
-  }
-  return result;
-}
 BOOL WINAPI SetWindowPos_Hook(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int cx, int cy, UINT uFlags) {
-  DWORD processId = 0;
-  const bool userDefinedMoveFlyoutControlCenter =
-      Wh_GetIntSetting(L"MoveFlyoutControlCenter") != 0;
-  const bool userDefinedMoveFlyoutNotificationCenter =
-      Wh_GetIntSetting(L"MoveFlyoutNotificationCenter") != 0;
   auto callOriginal = [&]() -> BOOL {
     return SetWindowPos_Original
         ? SetWindowPos_Original(hWnd, hWndInsertAfter, X, Y, cx, cy, uFlags)
         : FALSE;
   };
-  if (!hWnd || !GetWindowThreadProcessId(hWnd, &processId)) {
+  if (!hWnd) {
     return callOriginal();
   }
+  // Every SetWindowPos in these processes lands here; only two flyout classes are moved.
   WCHAR className[256] = L"<unknown>";
   GetClassNameW(hWnd, className, ARRAYSIZE(className));
   const std::wstring windowClassName = className;
-  const std::wstring processFileName = GetProcessExeName(processId);
+  if (_wcsicmp(className, L"ControlCenterWindow") != 0 &&
+      _wcsicmp(className, L"Windows.UI.Core.CoreWindow") != 0) {
+    return callOriginal();
+  }
+  DWORD processId = 0;
+  if (!GetWindowThreadProcessId(hWnd, &processId)) {
+    return callOriginal();
+  }
+  const bool userDefinedMoveFlyoutControlCenter =
+      Wh_GetIntSetting(L"MoveFlyoutControlCenter") != 0;
+  const bool userDefinedMoveFlyoutNotificationCenter =
+      Wh_GetIntSetting(L"MoveFlyoutNotificationCenter") != 0;
+  const std::wstring processFileName = GetProcessFileName(processId);
   Wh_Log(L"[SetWindowPos] PID: %lu | EXE: %s | Class: %s | HWND: 0x%p | Pos: (%d,%d) Size: %dx%d Flags: 0x%08X",
          processId,
          processFileName.c_str(),
@@ -10324,7 +10195,7 @@ BOOL Wh_ModInit() {
   if (moduleUser32) {
     auto pSetWindowPos = (SetWindowPos_t)GetProcAddress(moduleUser32, "SetWindowPos");
     if (pSetWindowPos) {
-      if (WindhawkUtils::Wh_SetFunctionHookT(pSetWindowPos, SetWindowPos_Hook, &SetWindowPos_Original)) {
+      if (WindhawkUtils::SetFunctionHook(pSetWindowPos, SetWindowPos_Hook, &SetWindowPos_Original)) {
         Wh_Log(L"Successfully hooked SetWindowPos");
       } else {
         Wh_Log(L"Failed to hook SetWindowPos");
@@ -10381,7 +10252,7 @@ void Wh_ModBeforeUninit() {
     RunFromWindowThread(hTaskbarWndForDock, [](void*) { StopDockMagnifyAllTai(); }, nullptr);
   }
   StopAccentWatcherTai();
-  CleanupDebounce();
+  StopApplyWorkers();
   UninitMinimizeAnimationCorrectionTai();
   Wh_ModBeforeUninitTBIconSize();
   Wh_ModBeforeUninitStartButtonPosition();
@@ -10397,7 +10268,7 @@ void Wh_ModUninit() {
   }
   StopAccentWatcherTai();
   UninitMinimizeAnimationCorrectionTai();
-  CleanupDebounce();
+  StopApplyWorkers();
   Wh_ModUninitTBIconSize();
   ResetGlobalVars();
   ClearTaskbarStates();

@@ -1,6 +1,6 @@
 // ==WindhawkMod==
-// @id              desktop-flip-clock
-// @name            Desktop Glass Clock
+// @id              windows-oct-clock
+// @name            Windows Oct Clock
 // @description     Frosted-glass desktop clock that adapts to any wallpaper, any resolution and any display scale.
 // @version         1.1.0
 // @author          Andino Ferdiansah 
@@ -11,7 +11,7 @@
 //
 // ==WindhawkModReadme==
 /*
-# Desktop Glass Clock
+# Windows Oct Clock
 
 Jam desktop dengan panel **kaca frosted asli**: blur diambil dari wallpaper kamu sendiri,
 jadi panelnya selalu menyatu dengan wallpaper apa pun.
@@ -1626,7 +1626,7 @@ static DWORD WINAPI ClockThreadProc(void*) {
 
     GdiplusStartupInput startupInput;
     if (GdiplusStartup(&g_gdiplusToken, &startupInput, nullptr) != Ok) {
-        Wh_Log(L"Desktop Glass Clock: GDI+ startup failed");
+        Wh_Log(L"Windows Oct Clock: GDI+ startup failed");
         if (SUCCEEDED(comInit)) CoUninitialize();
         return 0;
     }
@@ -1647,7 +1647,7 @@ static DWORD WINAPI ClockThreadProc(void*) {
                                     kClassName, L"", WS_POPUP | WS_VISIBLE, 0, 0, 1, 1, nullptr, nullptr,
                                     g_hInstance, nullptr);
     if (!g_clockWindow) {
-        Wh_Log(L"Desktop Glass Clock: CreateWindowEx failed: %u", GetLastError());
+        Wh_Log(L"Windows Oct Clock: CreateWindowEx failed: %u", GetLastError());
         UnregisterClassW(kClassName, g_hInstance);
         GdiplusShutdown(g_gdiplusToken);
         g_gdiplusToken = 0;
@@ -1688,10 +1688,10 @@ BOOL Wh_ModInit() {
     g_hInstance = reinterpret_cast<HINSTANCE>(&__ImageBase);
     g_thread = CreateThread(nullptr, 0, ClockThreadProc, nullptr, 0, nullptr);
     if (!g_thread) {
-        Wh_Log(L"Desktop Glass Clock: failed to create UI thread");
+        Wh_Log(L"Windows Oct Clock: failed to create UI thread");
         return FALSE;
     }
-    Wh_Log(L"Desktop Glass Clock initialized");
+    Wh_Log(L"Windows Oct Clock initialized");
     return TRUE;
 }
 
@@ -1710,5 +1710,5 @@ void Wh_ModUninit() {
         CloseHandle(g_thread);
         g_thread = nullptr;
     }
-    Wh_Log(L"Desktop Glass Clock uninitialized");
+    Wh_Log(L"Windows Oct Clock uninitialized");
 }

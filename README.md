@@ -8,7 +8,7 @@ Setup Windows 11 saya: dock ala macOS berbalut kaca, jam kaca (frosted glass) di
 
 | File | Isi |
 | --- | --- |
-| `windows-oct-dock.cpp` | Windows-OCT Dock v2.0.1. Dock ala macOS (berbasis MacOS Style Dock 1.1.2) dengan skin Windows-OCT: kaca gelap senada wallpaper, glow aksen, kilau, dan garis tepi. Jam, tanggal, baterai, dan tray ada di dalam dock. |
+| `windows-oct-dock.cpp` | Windows-OCT Dock v2.1.0. Dock ala macOS (berbasis MacOS Style Dock 1.1.2) dengan skin Windows-OCT: kaca gelap senada wallpaper, glow aksen, kilau, dan garis tepi. Jam, tanggal, baterai, dan tray ada di dalam dock. |
 | `windows-oct-clock.cpp` | Windows Oct Clock v1.1.0. Jam kaca di desktop berisi sapaan, tanggal, bar detik, dan progress hari. Warna aksennya diambil dari wallpaper lalu dibagikan ke dock. |
 | `windows-oct-genie.cpp` | Windows-OCT Genie v1.1.0. Animasi genie ala macOS untuk minimize, restore, dan buka aplikasi (berbasis MacOS Minimize Animation 3.2.1). Animasinya mendarat tepat di ikon aplikasi di dock dan berjalan satu frame per refresh layar. |
 | `space-art-nebula-8k-jy.jpg` | Wallpaper nebula 8K. |
@@ -127,6 +127,7 @@ Pengaturan dock dikelompokkan per grup. Kolom pertama menulis grup lalu nama pen
 | Dock → Auto-hide | On | On = tersembunyi sampai kursor menyentuh tepi bawah. Hybrid = sembunyi hanya saat ada jendela maximize atau snap. Off = jendela berhenti di atas dock. |
 | Magnification → Amount | 70 | Seberapa besar ikon membesar saat didekati kursor. |
 | Magnification → Range | 55 | Jarak dari kursor yang ikonnya masih ikut membesar. |
+| Dock items → Start button | On | Tombol Start Windows di ujung kiri dock. Klik untuk membuka Start, klik kanan untuk menu Win+X. |
 | Dock items → Recycle Bin | On | Recycle Bin di ujung kanan dock. Klik untuk membuka, klik kanan untuk mengosongkan, seret file ke sana untuk menghapus. |
 | Dock items → Show tooltips | On | Nama aplikasi muncul di atas ikon saat hover. |
 | Dock items → Running indicators | Dots | Titik di bawah aplikasi yang terbuka. Pilihan lain: *Hybrid dots* dan *Windows 11*. |

@@ -2,7 +2,7 @@
 // @id              windows-oct-dock
 // @name            Windows-OCT Dock
 // @description     macOS-style magnifying dock (based on MacOS Style Dock 1.1.2) with the Windows-OCT accent look
-// @version         2.0.1
+// @version         2.1.0
 // @author          Zach Vaughn; Windows-OCT skin by Andino Ferdiansah
 // @github          https://github.com/zachvdev
 // @include         explorer.exe
@@ -45,8 +45,9 @@ Glass Clock mod takes from the wallpaper.
 
 System tray (clock, date, battery, network) inside the dock, after the apps;
 Windows' own menus for them still open at the screen's right edge. Auto-hide
-on; app name labels on; Recycle Bin on, at the dock's right end like the macOS
-Trash (click to open, right-click to empty, drop files on it to delete them);
+on; app name labels on; Start button on, at the dock's left end; Recycle Bin
+on, at the dock's right end like the macOS Trash (click to open, right-click to
+empty, drop files on it to delete them);
 squircle icon tiles, Keep File Explorer first and the bottom-left hot corner
 off. All of them can be changed in Settings.
 
@@ -152,6 +153,11 @@ Clock by Andino Ferdiansah.
   - squircleCustomColor: FFFFFF
     $name: Custom squircle color
     $description: Used when Squircle color is Custom, as 6 hex digits. Default is FFFFFF.
+  - startButton: true
+    $name: Start button
+    $description: >-
+      Windows' Start button at the left end of the dock. Click to open Start,
+      right-click for Windows' own quick link menu. Default is on.
   - explorerFirst: false
     $name: Keep File Explorer first
     $description: >-
@@ -429,6 +435,7 @@ struct Settings {
     bool squircleIcons;
     TileColor tileColor;
     uint8_t tileCustomColor[3];
+    bool startButton;
     bool explorerFirst;
     bool recycleBin;
     bool tooltips;
@@ -550,6 +557,7 @@ void LoadSettings() {
     if (s.tileColor == TileColor::Custom && !hex(L"items.squircleCustomColor", s.tileCustomColor)) {
         s.tileColor = TileColor::Auto;
     }
+    s.startButton = Wh_GetIntSetting(L"items.startButton");
     s.explorerFirst = Wh_GetIntSetting(L"items.explorerFirst");
     s.recycleBin = Wh_GetIntSetting(L"items.recycleBin");
     s.tooltips = Wh_GetIntSetting(L"items.tooltips");
@@ -1254,9 +1262,18 @@ void ApplyStartHidden(wux::FrameworkElement const& el) {
     }
 }
 
+// Hidden unless the Start button setting is on. Turning it on gives back
+// Windows' own visibility, so the button joins the dock like the apps.
 void UpdateStartHidden(wux::FrameworkElement const& button) {
     if (!IsStartButton(button)) return;
     auto dp = wux::UIElement::VisibilityProperty();
+    if (g_settings.startButton) {
+        if (FindOverride(button, dp)) {
+            Release(button, dp);
+            MarkPlatesDirty();
+        }
+        return;
+    }
     Track(button, dp, ApplyStartHidden);
     ApplyStartHidden(button);
 }
